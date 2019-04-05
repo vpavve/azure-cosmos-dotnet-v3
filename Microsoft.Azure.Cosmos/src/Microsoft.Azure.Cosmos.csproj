@@ -34,7 +34,7 @@
     <IncludeSymbols>false</IncludeSymbols>
     <IncludeSource>false</IncludeSource>
     <CurrentDate>$([System.DateTime]::Now.ToString(yyyyMMdd))</CurrentDate>
-    <RootNamespace>Microsoft.Azure.Cosmos</RootNamespace>
+    <RootNamespace>Microsoft.Azure.Cosmos.Client</RootNamespace>
   </PropertyGroup>
   
   <ItemGroup>
