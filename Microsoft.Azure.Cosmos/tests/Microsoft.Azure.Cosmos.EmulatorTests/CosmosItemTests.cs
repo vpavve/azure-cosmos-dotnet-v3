@@ -748,11 +748,11 @@ namespace Microsoft.Azure.Cosmos.SDK.EmulatorTests
             ToDoActivity testItem = (await CreateRandomItems(1, randomPartitionKey: true)).First();
 
             // Create an access condition that will fail because the etag will be different
-            AccessCondition accessCondition = new AccessCondition
+            Cosmos.AccessCondition accessCondition = new Cosmos.AccessCondition
             {
                 // Random etag
                 Condition = Guid.NewGuid().ToString(),
-                Type = AccessConditionType.IfMatch
+                Type = Cosmos.AccessConditionType.IfMatch
             };
 
             CosmosItemRequestOptions itemRequestOptions = new CosmosItemRequestOptions()
@@ -830,6 +830,93 @@ namespace Microsoft.Azure.Cosmos.SDK.EmulatorTests
                 {
                     await fixedContainer.DeleteAsync();
                 }
+            }
+        }
+
+        [TestMethod]
+        public async Task ContainerDeleteAndCreateWithSameNameTest()
+        {
+            // when collection name changes, the collectionName ->Id cache at the gateway need to get invalidated and refreshed.
+            // This test is to verify this case is working well.
+            using (CosmosClient client = TestCommon.CreateCosmosClient(useGateway: false))
+            {
+                Assert.AreEqual(ConnectionMode.Direct, client.DocumentClient.ConnectionPolicy.ConnectionMode);
+                Assert.AreEqual("TCP", this.database.Client.DocumentClient.ConnectionPolicy.ConnectionProtocol.ToString().ToUpper());
+                await this.CollectionDeleteAndCreateWithSameNameTestPrivateAsync(client);
+            }
+
+
+            // Create a gateway-mode cosmos-client
+            using (CosmosClient client = TestCommon.CreateCosmosClient(useGateway: true))
+            {
+                Assert.AreEqual(ConnectionMode.Gateway, client.DocumentClient.ConnectionPolicy.ConnectionMode);
+                await this.CollectionDeleteAndCreateWithSameNameTestPrivateAsync(client);
+            }
+        }
+
+        private async Task CollectionDeleteAndCreateWithSameNameTestPrivateAsync(CosmosClient cosmosClient)
+        {
+            string suffix = Guid.NewGuid().ToString();
+            // First to create a ton of named based resource object.
+            string databaseId = "CacheRefreshTest" + suffix;
+            string collectionId = "collection" + suffix;
+            string doc1Id = "document1" + suffix;
+            string doc2Id = "document2" + suffix;
+
+            CosmosDatabase database = await cosmosClient.Databases.CreateDatabaseAsync(databaseId);
+            try
+            {
+
+                // Create database and create collection
+                CosmosContainerResponse createResponse1 = await database.Containers.CreateContainerAsync(collectionId, "/id");
+                CosmosContainer container1 = createResponse1.Container;
+
+                CosmosItemResponse<Document> createItemResponse1 = await container1.Items.CreateItemAsync(doc1Id, new Document { Id = doc1Id });
+                Assert.AreEqual(HttpStatusCode.Created, createItemResponse1.StatusCode);
+
+                // doing a read, which cause the gateway has name->Id cache.
+                CosmosResponseMessage itemReadResponse1 = await container1.Items.ReadItemStreamAsync(doc1Id, doc1Id);
+                Assert.AreEqual(HttpStatusCode.OK, itemReadResponse1.StatusCode);
+
+                // Now delete the collection:
+                await container1.DeleteAsync();
+
+                // now re-create the collection (same name, with different Rid)
+                CosmosContainerResponse createResponse2 = await database.Containers.CreateContainerAsync(collectionId, "/id");
+                CosmosContainer container2 = createResponse1.Container;
+
+                // Id should match but not RID
+                Assert.AreNotEqual(createResponse1.Resource.ResourceId, createResponse2.Resource.ResourceId);
+                Assert.AreEqual(createResponse1.Resource.Id, createResponse2.Resource.Id);
+
+                // Should succedd (Not Conflict)
+                CosmosItemResponse<Document> createItemResponse2 = await container1.Items.CreateItemAsync(doc1Id, new Document { Id = doc1Id });
+                Assert.AreEqual(HttpStatusCode.Created, createItemResponse1.StatusCode);
+
+                // Read collection, it should succeed:
+                //DocumentCollection coll2Temp1 = await client.ReadDocumentCollectionAsync(UriFactory.CreateDocumentCollectionUri(databaseId, collectionId));
+                //Assert.AreEqual(coll2Temp1.ResourceId, coll2.ResourceId);
+
+                // Read from contaienr-1
+                CosmosResponseMessage itemReadResponse2 = await container1.Items.ReadItemStreamAsync(doc1Id, doc1Id);
+                Assert.AreEqual(HttpStatusCode.OK, itemReadResponse2.StatusCode);
+
+                // Read from contaienr-2
+                itemReadResponse2 = await container2.Items.ReadItemStreamAsync(doc1Id, doc1Id);
+                Assert.AreEqual(HttpStatusCode.OK, itemReadResponse2.StatusCode);
+
+                // Read non-existing document - 404
+                itemReadResponse2 = await container1.Items.ReadItemStreamAsync(doc1Id, doc2Id);
+                Assert.AreEqual(HttpStatusCode.NotFound, itemReadResponse2.StatusCode);
+
+                // Read from contaienr-2
+                itemReadResponse2 = await container2.Items.ReadItemStreamAsync(doc1Id, doc2Id);
+                Assert.AreEqual(HttpStatusCode.NotFound, itemReadResponse2.StatusCode);
+
+            }
+            finally
+            {
+                await database.DeleteAsync();
             }
         }
 
