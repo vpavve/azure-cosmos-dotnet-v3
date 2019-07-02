@@ -63,6 +63,16 @@ namespace Microsoft.Azure.Cosmos.SDK.EmulatorTests
         }
 
         [TestMethod]
+        public async Task AuthTest()
+        {
+            CosmosClient client2 = TestCommon.CreateCosmosClient(useGateway: true); // Gateway
+            await client2.DocumentClient.OpenAsync();
+
+            CosmosClient client1 = TestCommon.CreateCosmosClient(); // Direct
+            await client1.DocumentClient.OpenAsync();
+        }
+
+        [TestMethod]
         public async Task CreateDropItemTest()
         {
             ToDoActivity testItem = this.CreateRandomToDoActivity();

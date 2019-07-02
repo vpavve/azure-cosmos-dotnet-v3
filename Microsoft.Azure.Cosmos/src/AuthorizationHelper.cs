@@ -110,7 +110,7 @@ namespace Microsoft.Azure.Cosmos
                      bUseUtcNowForMissingXDate);
 
                 byte[] hashPayLoad = hmacSha256.ComputeHash(Encoding.UTF8.GetBytes(payLoad));
-                string authorizationToken = Convert.ToBase64String(hashPayLoad);
+                string authorizationToken = Convert.ToBase64String(hashPayLoad).ToUpperInvariant();
 
                 return HttpUtility.UrlEncode(String.Format(CultureInfo.InvariantCulture, Constants.Properties.AuthorizationFormat,
                             Constants.Properties.MasterToken,
@@ -164,7 +164,7 @@ namespace Microsoft.Azure.Cosmos
                  headers);
 
             byte[] hashPayLoad = stringHMACSHA256Helper.ComputeHash(Encoding.UTF8.GetBytes(payLoad));
-            string authorizationToken = Convert.ToBase64String(hashPayLoad);
+            string authorizationToken = Convert.ToBase64String(hashPayLoad).ToUpperInvariant();
 
             return HttpUtility.UrlEncode(String.Format(CultureInfo.InvariantCulture, Constants.Properties.AuthorizationFormat,
                         Constants.Properties.MasterToken,
