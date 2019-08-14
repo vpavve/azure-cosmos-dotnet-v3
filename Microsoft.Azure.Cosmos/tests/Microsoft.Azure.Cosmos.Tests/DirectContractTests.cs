@@ -38,6 +38,13 @@ namespace Microsoft.Azure.Cosmos
         }
 
         [TestMethod]
+        public void AssertX64()
+        {
+            Assert.IsTrue(Environment.Is64BitProcess, $" OS: {Environment.OSVersion.ToString()} Is64Bit: {Environment.Is64BitProcess} ");
+            Assert.IsTrue(Environment.Is64BitOperatingSystem, $" OS: {Environment.OSVersion.ToString()} Is64Bit: {Environment.Is64BitOperatingSystem} ");
+        }
+
+        [TestMethod]
         public void PublicDirectTypes()
         {
             Assembly directAssembly = typeof(IStoreClient).Assembly;
