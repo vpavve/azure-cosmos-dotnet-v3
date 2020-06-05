@@ -9,6 +9,9 @@ namespace CosmosBenchmark
     using System.IO;
     using System.Net;
     using System.Threading.Tasks;
+    using Microsoft.ApplicationInsights;
+    using Microsoft.ApplicationInsights.DataContracts;
+    using Microsoft.ApplicationInsights.Extensibility;
     using Microsoft.Azure.Cosmos;
 
     internal class ReadBenchmarkOperation : IBenchmarkOperatrion
@@ -23,39 +26,48 @@ namespace CosmosBenchmark
         private string nextExecutionItemPartitionKey;
         private string nextExecutionItemId;
 
+        private TelemetryClient telemetryClient;
+
         public ReadBenchmarkOperation(
             Container container,
             string partitionKeyPath,
-            string sampleJson)
+            string sampleJson,
+            TelemetryClient telemetryClient)
         {
             this.container = container;
             this.partitionKeyPath = partitionKeyPath.Replace("/", "");
 
             this.databsaeName = container.Database.Id;
             this.containerName = container.Id;
+            this.telemetryClient = telemetryClient;
 
             this.sampleJObject = JsonHelper.Deserialize<Dictionary<string, object>>(sampleJson);
         }
 
         public async Task<OperationResult> ExecuteOnceAsync()
         {
-            using (ResponseMessage itemResponse = await this.container.ReadItemStreamAsync(
-                        this.nextExecutionItemId,
-                        new PartitionKey(this.nextExecutionItemPartitionKey)))
+            using (IOperationHolder<RequestTelemetry> operationHolder = this.telemetryClient.StartOperation<RequestTelemetry>(nameof(ReadBenchmarkOperation)))
             {
-                if (itemResponse.StatusCode != HttpStatusCode.OK)
+                using (ResponseMessage itemResponse = await this.container.ReadItemStreamAsync(
+                            this.nextExecutionItemId,
+                            new PartitionKey(this.nextExecutionItemPartitionKey)))
                 {
-                    throw new Exception($"ReadItem failed wth {itemResponse.StatusCode}");
+                    operationHolder.Telemetry.ResponseCode = itemResponse.StatusCode.ToString();
+
+                    if (itemResponse.StatusCode != HttpStatusCode.OK)
+                    {
+                        throw new Exception($"ReadItem failed wth {itemResponse.StatusCode}");
+                    }
+
+                    double ruCharges = itemResponse.Headers.RequestCharge;
+                    return new OperationResult()
+                    {
+                        DatabseName = databsaeName,
+                        ContainerName = containerName,
+                        RuCharges = ruCharges,
+                        lazyDiagnostics = () => itemResponse.Diagnostics.ToString(),
+                    };
                 }
-                
-                double ruCharges = itemResponse.Headers.RequestCharge;
-                return new OperationResult()
-                {
-                    DatabseName = databsaeName,
-                    ContainerName = containerName,
-                    RuCharges = ruCharges,
-                    lazyDiagnostics = () => itemResponse.Diagnostics.ToString(),
-                };
             }
         }
 

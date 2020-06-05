@@ -21,6 +21,9 @@ namespace CosmosBenchmark
         [Option('k', Required = true, HelpText = "Cosmos account master key")]
         public string Key { get; set; }
 
+        [Option("aik", Required = true, HelpText = "ApplicationInsightskey")]
+        public string ApplicationInsightskey { get; set; }
+
         [Option(Required = false, HelpText = "Database to use")]
         public string Database { get; set; } = "db";
 

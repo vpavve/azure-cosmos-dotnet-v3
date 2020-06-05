@@ -10,6 +10,8 @@ namespace CosmosBenchmark
     using System.Threading;
     using System.Threading.Tasks;
     using HdrHistogram;
+    using Microsoft.ApplicationInsights;
+    using Microsoft.ApplicationInsights.Extensibility;
     using Microsoft.Azure.Cosmos;
 
     /// <summary>
@@ -17,6 +19,9 @@ namespace CosmosBenchmark
     /// </summary>
     public sealed class Program
     {
+        private static string ApplicationName = "cosmosdbdotnetbenchmark";
+        private static TelemetryClient telemetryClient;
+
         private CosmosClient client;
 
         /// <summary>
@@ -41,9 +46,15 @@ namespace CosmosBenchmark
             config.Key = null; // Don't print
             config.Print();
 
+            // you may use different options to create configuration as shown later in this article
+            TelemetryConfiguration configuration = TelemetryConfiguration.CreateDefault();
+            configuration.InstrumentationKey = config.ApplicationInsightskey;
+            telemetryClient = new TelemetryClient(configuration);
+            telemetryClient.TrackTrace("Hello World!");
+
             CosmosClientOptions clientOptions = new CosmosClientOptions()
             {
-                ApplicationName = "cosmosdbdotnetbenchmark",
+                ApplicationName = Program.ApplicationName,
                 RequestTimeout = new TimeSpan(1, 0, 0),
                 MaxRetryAttemptsOnRateLimitedRequests = 0,
                 MaxRetryWaitTimeOnRateLimitedRequests = TimeSpan.FromSeconds(60),
@@ -64,6 +75,9 @@ namespace CosmosBenchmark
             {
                 TelemetrySpan.LatencyHistogram.OutputPercentileDistribution(fileWriter);
             }
+
+            // Flush all telemetry
+            telemetryClient.Flush();
 
             Console.WriteLine($"{nameof(CosmosBenchmark)} completed successfully.");
             Console.WriteLine("Press any key to exit...");
@@ -110,7 +124,8 @@ namespace CosmosBenchmark
                     benchmarkOperation = new ReadBenchmarkOperation(
                         container,
                         partitionKeyPath,
-                        sampleItem);
+                        sampleItem,
+                        telemetryClient);
                     break;
                 default:
                     throw new NotImplementedException($"Unsupported workload type {config.WorkloadType}");
