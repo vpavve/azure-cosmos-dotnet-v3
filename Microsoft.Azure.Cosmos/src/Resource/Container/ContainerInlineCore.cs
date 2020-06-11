@@ -128,7 +128,7 @@ namespace Microsoft.Azure.Cosmos
             ItemRequestOptions requestOptions = null,
             CancellationToken cancellationToken = default)
         {
-            return TaskHelper.RunInlineIfNeededAsync(() => base.ReadItemAsync<T>(id, partitionKey, requestOptions, cancellationToken));
+            return base.ReadItemAsync<T>(id, partitionKey, requestOptions, cancellationToken);
         }
 
         public override Task<ResponseMessage> UpsertItemStreamAsync(
