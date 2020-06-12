@@ -85,7 +85,7 @@ namespace Microsoft.Azure.Cosmos
             }
             else
             {
-                diagnosticsContext = EmptyCosmosDiagnosticsContext.Singleton;
+                diagnosticsContext = new CosmosDiagnosticsContextCore();
             }
 
             CosmosException cosmosException = CosmosExceptionFactory.Create(

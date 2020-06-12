@@ -228,7 +228,7 @@ namespace Microsoft.Azure.Cosmos
             PartitionKeyRangeServerBatchRequest serverRequest,
             CancellationToken cancellationToken)
         {
-            CosmosDiagnosticsContext diagnosticsContext = EmptyCosmosDiagnosticsContext.Singleton;
+            CosmosDiagnosticsContext diagnosticsContext = new CosmosDiagnosticsContextCore();
             SemaphoreSlim limiter = this.GetOrAddLimiterForPartitionKeyRange(serverRequest.PartitionKeyRangeId);
             using (await limiter.UsingWaitAsync(diagnosticsContext, cancellationToken))
             {
