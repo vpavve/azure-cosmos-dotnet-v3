@@ -75,7 +75,7 @@ namespace Microsoft.Azure.Cosmos.Routing
 #endif
         }
 
-        public ReadOnlyCollection<Uri> ReadEndpoints
+        public Uri[] ReadEndpoints
         {
             get
             {
@@ -83,7 +83,7 @@ namespace Microsoft.Azure.Cosmos.Routing
             }
         }
 
-        public ReadOnlyCollection<Uri> WriteEndpoints
+        public Uri[] WriteEndpoints
         {
             get
             {

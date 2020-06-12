@@ -48,7 +48,7 @@ namespace Microsoft.Azure.Cosmos.Routing
             this.connectionLimit = connectionLimit;
 
             this.lockObject = new object();
-            this.locationUnavailablityInfoByEndpoint = new ConcurrentDictionary<Uri, LocationUnavailabilityInfo>();
+            this.locationUnavailablityInfoByEndpoint = new ConcurrentDictionary<Uri, LocationUnavailabilityInfo>(1, 4);
             this.lastCacheUpdateTimestamp = DateTime.MinValue;
             this.enableMultipleWriteLocations = false;
             this.unavailableLocationsExpirationTime = TimeSpan.FromSeconds(LocationCache.DefaultUnavailableLocationsExpirationTimeInSeconds);
@@ -84,7 +84,7 @@ namespace Microsoft.Azure.Cosmos.Routing
         /// 1. Preferred location
         /// 2. Endpoint availablity
         /// </summary>
-        public ReadOnlyCollection<Uri> ReadEndpoints
+        public Uri[] ReadEndpoints
         {
             get
             {
@@ -104,7 +104,7 @@ namespace Microsoft.Azure.Cosmos.Routing
         /// 1. Preferred location
         /// 2. Endpoint availablity
         /// </summary>
-        public ReadOnlyCollection<Uri> WriteEndpoints
+        public Uri[] WriteEndpoints
         {
             get
             {
@@ -228,8 +228,8 @@ namespace Microsoft.Azure.Cosmos.Routing
             }
             else
             {
-                ReadOnlyCollection<Uri> endpoints = request.OperationType.IsWriteOperation() ? this.WriteEndpoints : this.ReadEndpoints;
-                locationEndpointToRoute = endpoints[locationIndex % endpoints.Count];
+                Uri[] endpoints = request.OperationType.IsWriteOperation() ? this.WriteEndpoints : this.ReadEndpoints;
+                locationEndpointToRoute = endpoints[locationIndex % endpoints.Length];
             }
 
             request.RequestContext.RouteToLocation(locationEndpointToRoute);
@@ -249,11 +249,11 @@ namespace Microsoft.Azure.Cosmos.Routing
                 // Refresh if client opts-in to useMultipleWriteLocations but server-side setting is disabled
                 bool shouldRefresh = this.useMultipleWriteLocations && !this.enableMultipleWriteLocations;
 
-                ReadOnlyCollection<Uri> readLocationEndpoints = currentLocationInfo.ReadEndpoints;
+                Uri[] readLocationEndpoints = currentLocationInfo.ReadEndpoints;
 
                 if (this.IsEndpointUnavailable(readLocationEndpoints[0], OperationType.Read))
                 {
-                    canRefreshInBackground = readLocationEndpoints.Count > 1;
+                    canRefreshInBackground = readLocationEndpoints.Length > 1;
                     DefaultTrace.TraceInformation("ShouldRefreshEndpoints = true since the first read endpoint {0} is not available for read. canRefreshInBackground = {1}",
                         readLocationEndpoints[0],
                         canRefreshInBackground);
@@ -283,7 +283,7 @@ namespace Microsoft.Azure.Cosmos.Routing
                 }
 
                 Uri mostPreferredWriteEndpoint;
-                ReadOnlyCollection<Uri> writeLocationEndpoints = currentLocationInfo.WriteEndpoints;
+                Uri[] writeLocationEndpoints = currentLocationInfo.WriteEndpoints;
 
                 if (!this.CanUseMultipleWriteLocations())
                 {
@@ -291,7 +291,7 @@ namespace Microsoft.Azure.Cosmos.Routing
                     {
                         // Since most preferred write endpoint is unavailable, we can only refresh in background if 
                         // we have an alternate write endpoint
-                        canRefreshInBackground = writeLocationEndpoints.Count > 1;
+                        canRefreshInBackground = writeLocationEndpoints.Length > 1;
                         DefaultTrace.TraceInformation("ShouldRefreshEndpoints = true since most preferred location {0} endpoint {1} is not available for write. canRefreshInBackground = {2}",
                             mostPreferredLocation,
                             writeLocationEndpoints[0],
@@ -455,8 +455,8 @@ namespace Microsoft.Azure.Cosmos.Routing
                     nextLocationInfo.AvailableWriteLocations = availableWriteLocations;
                 }
 
-                nextLocationInfo.WriteEndpoints = this.GetPreferredAvailableEndpoints(nextLocationInfo.AvailableWriteEndpointByLocation, nextLocationInfo.AvailableWriteLocations, OperationType.Write, this.defaultEndpoint);
-                nextLocationInfo.ReadEndpoints = this.GetPreferredAvailableEndpoints(nextLocationInfo.AvailableReadEndpointByLocation, nextLocationInfo.AvailableReadLocations, OperationType.Read, nextLocationInfo.WriteEndpoints[0]);
+                nextLocationInfo.WriteEndpoints = this.GetPreferredAvailableEndpoints(nextLocationInfo.AvailableWriteEndpointByLocation, nextLocationInfo.AvailableWriteLocations, OperationType.Write, this.defaultEndpoint).ToArray();
+                nextLocationInfo.ReadEndpoints = this.GetPreferredAvailableEndpoints(nextLocationInfo.AvailableReadEndpointByLocation, nextLocationInfo.AvailableReadLocations, OperationType.Read, nextLocationInfo.WriteEndpoints[0]).ToArray();
                 this.lastCacheUpdateTimestamp = DateTime.UtcNow;
 
                 DefaultTrace.TraceInformation("Current WriteEndpoints = ({0}) ReadEndpoints = ({1})",
@@ -585,8 +585,8 @@ namespace Microsoft.Azure.Cosmos.Routing
                 this.AvailableReadLocations = new List<string>().AsReadOnly();
                 this.AvailableWriteEndpointByLocation = new ReadOnlyDictionary<string, Uri>(new Dictionary<string, Uri>(StringComparer.OrdinalIgnoreCase));
                 this.AvailableReadEndpointByLocation = new ReadOnlyDictionary<string, Uri>(new Dictionary<string, Uri>(StringComparer.OrdinalIgnoreCase));
-                this.WriteEndpoints = new List<Uri>() { defaultEndpoint }.AsReadOnly();
-                this.ReadEndpoints = new List<Uri>() { defaultEndpoint }.AsReadOnly();
+                this.WriteEndpoints = new Uri[] { defaultEndpoint };
+                this.ReadEndpoints = new Uri[] { defaultEndpoint };
             }
 
             public DatabaseAccountLocationsInfo(DatabaseAccountLocationsInfo other)
@@ -605,8 +605,8 @@ namespace Microsoft.Azure.Cosmos.Routing
             public ReadOnlyCollection<string> AvailableReadLocations { get; set; }
             public ReadOnlyDictionary<string, Uri> AvailableWriteEndpointByLocation { get; set; }
             public ReadOnlyDictionary<string, Uri> AvailableReadEndpointByLocation { get; set; }
-            public ReadOnlyCollection<Uri> WriteEndpoints { get; set; }
-            public ReadOnlyCollection<Uri> ReadEndpoints { get; set; }
+            public Uri[] WriteEndpoints { get; set; }
+            public Uri[] ReadEndpoints { get; set; }
         }
 
         [Flags]

@@ -36,6 +36,9 @@ namespace Microsoft.Azure.Cosmos.Routing
         private readonly TimeSpan requestTimeout;
         private readonly ApiType apiType;
 
+        private Uri uri;
+        private EndpointCache endpointCache;
+
         public GlobalAddressResolver(
             GlobalEndpointManager endpointManager,
             Protocol protocol,
@@ -65,7 +68,7 @@ namespace Microsoft.Azure.Cosmos.Routing
 
             this.maxEndpoints = maxBackupReadEndpoints + 2; // for write and alternate write endpoint (during failover)
 
-            this.addressCacheByEndpoint = new ConcurrentDictionary<Uri, EndpointCache>();
+            this.addressCacheByEndpoint = new ConcurrentDictionary<Uri, EndpointCache>(1, 4);
 
             foreach (Uri endpoint in endpointManager.WriteEndpoints)
             {
@@ -152,7 +155,12 @@ namespace Microsoft.Azure.Cosmos.Routing
 
         private EndpointCache GetOrAddEndpoint(Uri endpoint)
         {
-            EndpointCache endpointCache = this.addressCacheByEndpoint.GetOrAdd(
+            if (this.uri == endpoint)
+            {
+                return this.endpointCache;
+            }
+
+            EndpointCache endpointCache1 = this.addressCacheByEndpoint.GetOrAdd(
                 endpoint,
                 (Uri resolvedEndpoint) =>
                 {
@@ -196,7 +204,10 @@ namespace Microsoft.Azure.Cosmos.Routing
                 }
             }
 
-            return endpointCache;
+            this.endpointCache = endpointCache1;
+            this.uri = endpoint;
+
+            return endpointCache1;
         }
 
         private sealed class EndpointCache

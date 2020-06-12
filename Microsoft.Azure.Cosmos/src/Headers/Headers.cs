@@ -331,7 +331,7 @@ namespace Microsoft.Azure.Cosmos
 
         private CosmosMessageHeadersInternal CreateCosmosMessageHeaders()
         {
-            return new CosmosMessageHeadersInternal(this.CreateKnownDictionary());
+            return new CosmosMessageHeadersInternal(this, this.CreateKnownDictionary());
         }
 
         internal Dictionary<string, CosmosCustomHeader> CreateKnownDictionary()

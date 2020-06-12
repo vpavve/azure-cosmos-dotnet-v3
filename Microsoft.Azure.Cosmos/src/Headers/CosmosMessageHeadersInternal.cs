@@ -21,10 +21,12 @@ namespace Microsoft.Azure.Cosmos
         private readonly Lazy<Dictionary<string, string>> headers = new Lazy<Dictionary<string, string>>(CosmosMessageHeadersInternal.CreateDictionary);
 
         private readonly Dictionary<string, CosmosCustomHeader> knownHeaders;
+        private readonly Headers headersInst;
 
-        public CosmosMessageHeadersInternal(Dictionary<string, CosmosCustomHeader> knownHeaders)
+        public CosmosMessageHeadersInternal(Headers headers, Dictionary<string, CosmosCustomHeader> knownHeaders)
         {
             this.knownHeaders = knownHeaders;
+            this.headersInst = headers;
         }
 
         public void Add(string headerName, string value)
@@ -87,6 +89,12 @@ namespace Microsoft.Azure.Cosmos
             if (headerName == null)
             {
                 throw new ArgumentNullException(nameof(headerName));
+            }
+
+            if (headerName == "x-ms-session-token")
+            {
+                // special short-circuit
+                this.headersInst.Session = null;
             }
 
             CosmosCustomHeader knownHeader;

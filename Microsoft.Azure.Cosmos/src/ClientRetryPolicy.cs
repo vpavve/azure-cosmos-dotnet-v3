@@ -252,9 +252,9 @@ namespace Microsoft.Azure.Cosmos
             {
                 if (this.canUseMultipleWriteLocations)
                 {
-                    ReadOnlyCollection<Uri> endpoints = this.isReadRequest ? this.globalEndpointManager.ReadEndpoints : this.globalEndpointManager.WriteEndpoints;
+                    Uri[] endpoints = this.isReadRequest ? this.globalEndpointManager.ReadEndpoints : this.globalEndpointManager.WriteEndpoints;
 
-                    if (this.sessionTokenRetryCount > endpoints.Count)
+                    if (this.sessionTokenRetryCount > endpoints.Length)
                     {
                         // When use multiple write locations is true and the request has been tried 
                         // on all locations, then don't retry the request
