@@ -111,17 +111,20 @@ namespace CosmosBenchmark
                 IEnumerable<int> exceptFirst5 = perLoopCounters.Skip(5);
                 int[] summaryCounters = exceptFirst5.Take(exceptFirst5.Count() - 5).OrderBy(e => e).ToArray();
 
-                double percentile = 0.7;
-                Console.WriteLine($"{percentile * 100}% RPS : { summaryCounters.Skip((int)(1-percentile)*100) }");
+                double percentile = 0.6;
+                Console.WriteLine($"{percentile * 100}% AVG RPS : { summaryCounters.Skip((int)(1-percentile)*100).Average() }");
+
+                percentile = 0.7;
+                Console.WriteLine($"{percentile * 100}% AVG RPS : { summaryCounters.Skip((int)(1 - percentile) * 100).Average() }");
 
                 percentile = 0.8;
-                Console.WriteLine($"{percentile * 100}% RPS : { summaryCounters.Skip((int)(1 - percentile) * 100) }");
+                Console.WriteLine($"{percentile * 100}% AVG RPS : { summaryCounters.Skip((int)(1 - percentile) * 100).Average() }");
 
                 percentile = 0.9;
-                Console.WriteLine($"{percentile * 100}% RPS : { summaryCounters.Skip((int)(1 - percentile) * 100) }");
+                Console.WriteLine($"{percentile * 100}% AVG RPS : { summaryCounters.Skip((int)(1 - percentile) * 100).Average() }");
 
                 percentile = 0.95;
-                Console.WriteLine($"{percentile * 100}% RPS : { summaryCounters.Skip((int)(1 - percentile) * 100) }");
+                Console.WriteLine($"{percentile * 100}% AVG RPS : { summaryCounters.Skip((int)(1 - percentile) * 100).Average() }");
 
                 Console.WriteLine("--------------------------------------------------------------------- ");
             }
