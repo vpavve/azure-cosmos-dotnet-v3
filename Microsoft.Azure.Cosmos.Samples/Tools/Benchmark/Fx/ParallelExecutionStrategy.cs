@@ -5,7 +5,9 @@
 namespace CosmosBenchmark
 {
     using System;
+    using System.Collections.Generic;
     using System.Diagnostics;
+    using System.Linq;
     using System.Threading;
     using System.Threading.Tasks;
 
@@ -59,7 +61,8 @@ namespace CosmosBenchmark
 
         private async Task LogOutputStats(IExecutor[] executors)
         {
-            const int outputLoopDelayInSeconds = 5;
+            const int outputLoopDelayInSeconds = 1;
+            IList<int> perLoopCounters = new List<int>();
             Summary lastSummary = new Summary();
 
             Stopwatch watch = new Stopwatch();
@@ -91,6 +94,7 @@ namespace CosmosBenchmark
                 lastSummary = currentTotalSummary;
 
                 diff.Print(currentTotalSummary.failedOpsCount + currentTotalSummary.succesfulOpsCount);
+                perLoopCounters.Add((int)(diff.failedOpsCount  + diff.succesfulOpsCount));
 
                 await Task.Delay(TimeSpan.FromSeconds(outputLoopDelayInSeconds));
             }
@@ -102,6 +106,23 @@ namespace CosmosBenchmark
                 Console.WriteLine("Summary:");
                 Console.WriteLine("--------------------------------------------------------------------- ");
                 lastSummary.Print(lastSummary.failedOpsCount + lastSummary.succesfulOpsCount);
+
+                // Skip first 5 and last 5 counters
+                IEnumerable<int> exceptFirst5 = perLoopCounters.Skip(5);
+                int[] summaryCounters = exceptFirst5.Take(exceptFirst5.Count() - 5).OrderBy(e => e).ToArray();
+
+                double percentile = 0.7;
+                Console.WriteLine($"{percentile * 100}% RPS : { summaryCounters.Skip((int)(1-percentile)*100) }");
+
+                percentile = 0.8;
+                Console.WriteLine($"{percentile * 100}% RPS : { summaryCounters.Skip((int)(1 - percentile) * 100) }");
+
+                percentile = 0.9;
+                Console.WriteLine($"{percentile * 100}% RPS : { summaryCounters.Skip((int)(1 - percentile) * 100) }");
+
+                percentile = 0.95;
+                Console.WriteLine($"{percentile * 100}% RPS : { summaryCounters.Skip((int)(1 - percentile) * 100) }");
+
                 Console.WriteLine("--------------------------------------------------------------------- ");
             }
         }
