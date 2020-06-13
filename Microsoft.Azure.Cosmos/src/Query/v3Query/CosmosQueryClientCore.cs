@@ -129,7 +129,7 @@ namespace Microsoft.Azure.Cosmos
             requestOptions.MaxItemCount = pageSize;
 
             ResponseMessage message = await this.clientContext.ProcessResourceOperationStreamAsync(
-                resourceUri: resourceUri,
+                resourceUri: resourceUri.OriginalString,
                 resourceType: resourceType,
                 operationType: operationType,
                 requestOptions: requestOptions,
@@ -172,7 +172,7 @@ namespace Microsoft.Azure.Cosmos
         {
             PartitionedQueryExecutionInfo partitionedQueryExecutionInfo;
             using (ResponseMessage message = await this.clientContext.ProcessResourceOperationStreamAsync(
-                resourceUri: resourceUri,
+                resourceUri: resourceUri.OriginalString,
                 resourceType: resourceType,
                 operationType: operationType,
                 requestOptions: null,
