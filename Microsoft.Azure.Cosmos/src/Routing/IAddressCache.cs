@@ -23,7 +23,7 @@ namespace Microsoft.Azure.Cosmos.Common
         /// <param name="forceRefreshPartitionAddresses">Whether addresses need to be refreshed as previously resolved addresses were determined to be outdated.</param>
         /// <param name="cancellationToken">Instance of <see cref="CancellationToken"/>.</param>
         /// <returns>Physical addresses.</returns>
-        Task<PartitionAddressInformation> TryGetAddressesAsync(
+        ValueTask<PartitionAddressInformation> TryGetAddressesAsync(
             DocumentServiceRequest request,
             PartitionKeyRangeIdentity partitionKeyRangeIdentity,
             ServiceIdentity serviceIdentity,

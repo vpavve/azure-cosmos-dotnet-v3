@@ -107,7 +107,7 @@ namespace Microsoft.Azure.Cosmos.Routing
             await Task.WhenAll(tasks);
         }
 
-        public Task<PartitionAddressInformation> ResolveAsync(
+        public ValueTask<PartitionAddressInformation> ResolveAsync(
             DocumentServiceRequest request,
             bool forceRefresh,
             CancellationToken cancellationToken)

@@ -155,7 +155,7 @@ namespace Microsoft.Azure.Cosmos.Routing
             }
         }
 
-        public async Task<PartitionAddressInformation> TryGetAddressesAsync(
+        public async ValueTask<PartitionAddressInformation> TryGetAddressesAsync(
             DocumentServiceRequest request,
             PartitionKeyRangeIdentity partitionKeyRangeIdentity,
             ServiceIdentity serviceIdentity,
