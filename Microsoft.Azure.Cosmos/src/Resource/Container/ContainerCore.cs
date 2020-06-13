@@ -323,7 +323,7 @@ namespace Microsoft.Azure.Cosmos
         /// </summary>
         /// <param name="cancellationToken"><see cref="CancellationToken"/> representing request cancellation.</param>
         /// <returns>A <see cref="Task"/> containing the <see cref="ContainerProperties"/> for this container.</returns>
-        public override async Task<ContainerProperties> GetCachedContainerPropertiesAsync(CancellationToken cancellationToken = default(CancellationToken))
+        public override async ValueTask<ContainerProperties> GetCachedContainerPropertiesAsync(CancellationToken cancellationToken = default(CancellationToken))
         {
             ClientCollectionCache collectionCache = await this.ClientContext.DocumentClient.GetCollectionCacheAsync();
             try
@@ -339,16 +339,16 @@ namespace Microsoft.Azure.Cosmos
         }
 
         // Name based look-up, needs re-computation and can't be cached
-        public override async Task<string> GetRIDAsync(CancellationToken cancellationToken)
+        public override async ValueTask<string> GetRIDAsync(CancellationToken cancellationToken)
         {
             ContainerProperties containerProperties = await this.GetCachedContainerPropertiesAsync(cancellationToken);
             return containerProperties?.ResourceId;
         }
 
-        public override Task<PartitionKeyDefinition> GetPartitionKeyDefinitionAsync(CancellationToken cancellationToken = default(CancellationToken))
+        public override async ValueTask<PartitionKeyDefinition> GetPartitionKeyDefinitionAsync(CancellationToken cancellationToken = default(CancellationToken))
         {
-            return this.GetCachedContainerPropertiesAsync(cancellationToken)
-                            .ContinueWith(containerPropertiesTask => containerPropertiesTask.Result?.PartitionKey, cancellationToken);
+            ContainerProperties container = await this.GetCachedContainerPropertiesAsync(cancellationToken);
+            return container.PartitionKey;
         }
 
         /// <summary>
@@ -356,7 +356,7 @@ namespace Microsoft.Azure.Cosmos
         /// </summary>
         /// <param name="cancellationToken"></param>
         /// <returns>Returns the partition key path</returns>
-        public override async Task<string[]> GetPartitionKeyPathTokensAsync(CancellationToken cancellationToken = default(CancellationToken))
+        public override async ValueTask<string[]> GetPartitionKeyPathTokensAsync(CancellationToken cancellationToken = default(CancellationToken))
         {
             ContainerProperties containerProperties = await this.GetCachedContainerPropertiesAsync(cancellationToken);
             if (containerProperties == null)
@@ -388,26 +388,15 @@ namespace Microsoft.Azure.Cosmos
             return containerProperties.GetNoneValue();
         }
 
-        public override Task<CollectionRoutingMap> GetRoutingMapAsync(CancellationToken cancellationToken)
+        public override async ValueTask<CollectionRoutingMap> GetRoutingMapAsync(CancellationToken cancellationToken)
         {
-            string collectionRID = null;
-            return this.GetRIDAsync(cancellationToken)
-                .ContinueWith(ridTask =>
-                {
-                    collectionRID = ridTask.Result;
-                    return this.ClientContext.Client.DocumentClient.GetPartitionKeyRangeCacheAsync();
-                })
-                .Unwrap()
-                .ContinueWith(partitionKeyRangeCachetask =>
-                {
-                    PartitionKeyRangeCache partitionKeyRangeCache = partitionKeyRangeCachetask.Result;
-                    return partitionKeyRangeCache.TryLookupAsync(
-                            collectionRID,
-                            null,
-                            null,
-                            cancellationToken);
-                })
-                .Unwrap();
+            string collectionRID = await this.GetRIDAsync(cancellationToken);
+            PartitionKeyRangeCache partitionKeyRangeCache = await this.ClientContext.Client.DocumentClient.GetPartitionKeyRangeCacheAsync();
+            return await partitionKeyRangeCache.TryLookupAsync(
+                    collectionRID,
+                    null,
+                    null,
+                    cancellationToken);
         }
 
         private Task<ResponseMessage> ReplaceStreamInternalAsync(

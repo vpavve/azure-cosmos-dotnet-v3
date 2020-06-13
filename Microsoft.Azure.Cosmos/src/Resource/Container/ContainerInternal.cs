@@ -32,20 +32,20 @@ namespace Microsoft.Azure.Cosmos
             RequestOptions requestOptions,
             CancellationToken cancellationToken);
 
-        public abstract Task<string> GetRIDAsync(CancellationToken cancellationToken);
+        public abstract ValueTask<string> GetRIDAsync(CancellationToken cancellationToken);
 
-        public abstract Task<Documents.PartitionKeyDefinition> GetPartitionKeyDefinitionAsync(
+        public abstract ValueTask<Documents.PartitionKeyDefinition> GetPartitionKeyDefinitionAsync(
             CancellationToken cancellationToken);
 
-        public abstract Task<ContainerProperties> GetCachedContainerPropertiesAsync(
+        public abstract ValueTask<ContainerProperties> GetCachedContainerPropertiesAsync(
             CancellationToken cancellationToken = default(CancellationToken));
 
-        public abstract Task<string[]> GetPartitionKeyPathTokensAsync(CancellationToken cancellationToken = default(CancellationToken));
+        public abstract ValueTask<string[]> GetPartitionKeyPathTokensAsync(CancellationToken cancellationToken = default(CancellationToken));
 
         public abstract Task<Documents.Routing.PartitionKeyInternal> GetNonePartitionKeyValueAsync(
             CancellationToken cancellationToken);
 
-        public abstract Task<CollectionRoutingMap> GetRoutingMapAsync(CancellationToken cancellationToken);
+        public abstract ValueTask<CollectionRoutingMap> GetRoutingMapAsync(CancellationToken cancellationToken);
 
         public abstract Task<TryExecuteQueryResult> TryExecuteQueryAsync(
             QueryFeatures supportedQueryFeatures,

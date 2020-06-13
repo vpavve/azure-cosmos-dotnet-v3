@@ -89,7 +89,7 @@ namespace Microsoft.Azure.Cosmos.Routing
             return routingMap.TryGetRangeByPartitionKeyRangeId(partitionKeyRangeId);
         }
 
-        public virtual async Task<CollectionRoutingMap> TryLookupAsync(
+        public virtual async ValueTask<CollectionRoutingMap> TryLookupAsync(
             string collectionRid,
             CollectionRoutingMap previousValue,
             DocumentServiceRequest request,
