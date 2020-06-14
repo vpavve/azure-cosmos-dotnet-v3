@@ -115,7 +115,7 @@ namespace CosmosBenchmark
                 {
                     Console.WriteLine();
                     Console.WriteLine("After Excluding outliers");
-                    double[] percentiles = new double[] { 0.6, 0.7, 0.8, 0.9, 0.95 };
+                    double[] percentiles = new double[] { 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95 };
                     foreach (double e in percentiles)
                     {
                         Console.WriteLine($"\t {e * 100}% AVG RPS : { Math.Round(summaryCounters.Skip((int)(e * summaryCounters.Length)).Average(), 0) }");
