@@ -94,7 +94,7 @@ namespace CosmosBenchmark
                 lastSummary = currentTotalSummary;
 
                 diff.Print(currentTotalSummary.failedOpsCount + currentTotalSummary.succesfulOpsCount);
-                perLoopCounters.Add((int)(diff.failedOpsCount  + diff.succesfulOpsCount));
+                perLoopCounters.Add((int)diff.Rps());
 
                 await Task.Delay(TimeSpan.FromSeconds(outputLoopDelayInSeconds));
             }
