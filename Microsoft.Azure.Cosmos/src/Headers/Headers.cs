@@ -7,6 +7,7 @@ namespace Microsoft.Azure.Cosmos
     using System;
     using System.Collections;
     using System.Collections.Generic;
+    using System.Collections.ObjectModel;
     using System.Globalization;
     using System.Linq;
     using System.Reflection;
@@ -19,7 +20,7 @@ namespace Microsoft.Azure.Cosmos
     /// <seealso cref="RequestMessage"/>
     public class Headers : IEnumerable
     {
-        private static KeyValuePair<string, PropertyInfo>[] knownHeaderProperties = CosmosMessageHeadersInternal.GetHeaderAttributes<Headers>();
+        private static Dictionary<string, PropertyInfo> KnownHeaderProperties = CosmosMessageHeadersInternal.GetHeaderAttributes<Headers>();
 
         private readonly Lazy<CosmosMessageHeadersInternal> messageHeaders;
 
@@ -331,17 +332,7 @@ namespace Microsoft.Azure.Cosmos
 
         private CosmosMessageHeadersInternal CreateCosmosMessageHeaders()
         {
-            return new CosmosMessageHeadersInternal(this.CreateKnownDictionary());
-        }
-
-        internal Dictionary<string, CosmosCustomHeader> CreateKnownDictionary()
-        {
-            return Headers.knownHeaderProperties.ToDictionary(
-                    knownProperty => knownProperty.Key,
-                    knownProperty => new CosmosCustomHeader(
-                            () => (string)knownProperty.Value.GetValue(this),
-                            (string value) => { knownProperty.Value.SetValue(this, value); }),
-                    StringComparer.OrdinalIgnoreCase);
+            return new CosmosMessageHeadersInternal(Headers.KnownHeaderProperties, this);
         }
 
         internal static SubStatusCodes GetSubStatusCodes(string value)

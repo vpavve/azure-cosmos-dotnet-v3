@@ -20,11 +20,13 @@ namespace Microsoft.Azure.Cosmos
     {
         private readonly Lazy<Dictionary<string, string>> headers = new Lazy<Dictionary<string, string>>(CosmosMessageHeadersInternal.CreateDictionary);
 
-        private readonly Dictionary<string, CosmosCustomHeader> knownHeaders;
+        private readonly Dictionary<string, PropertyInfo> knownHeaders;
+        private readonly Headers instance;
 
-        public CosmosMessageHeadersInternal(Dictionary<string, CosmosCustomHeader> knownHeaders)
+        public CosmosMessageHeadersInternal(Dictionary<string, PropertyInfo> knownHeaders, Headers instance)
         {
             this.knownHeaders = knownHeaders;
+            this.instance = instance;
         }
 
         public void Add(string headerName, string value)
@@ -39,10 +41,10 @@ namespace Microsoft.Azure.Cosmos
                 throw new ArgumentNullException(nameof(value));
             }
 
-            CosmosCustomHeader knownHeader;
+            PropertyInfo knownHeader;
             if (this.knownHeaders.TryGetValue(headerName, out knownHeader))
             {
-                knownHeader.Set(value);
+                knownHeader.SetValue(this.instance, value);
                 return;
             }
 
@@ -71,10 +73,10 @@ namespace Microsoft.Azure.Cosmos
                 throw new ArgumentNullException(nameof(headerName));
             }
 
-            CosmosCustomHeader knownHeader;
+            PropertyInfo knownHeader;
             if (this.knownHeaders.TryGetValue(headerName, out knownHeader))
             {
-                value = knownHeader.Get();
+                value = (string)knownHeader.GetValue(this.instance);
                 return true;
             }
 
@@ -89,10 +91,10 @@ namespace Microsoft.Azure.Cosmos
                 throw new ArgumentNullException(nameof(headerName));
             }
 
-            CosmosCustomHeader knownHeader;
+            PropertyInfo knownHeader;
             if (this.knownHeaders.TryGetValue(headerName, out knownHeader))
             {
-                knownHeader.Set(null);
+                knownHeader.SetValue(this.instance, null);
                 return;
             }
 
@@ -124,10 +126,10 @@ namespace Microsoft.Azure.Cosmos
                 throw new ArgumentNullException(nameof(key));
             }
 
-            CosmosCustomHeader knownHeader;
+            PropertyInfo knownHeader;
             if (this.knownHeaders.TryGetValue(key, out knownHeader))
             {
-                knownHeader.Set(value);
+                knownHeader.SetValue(this.instance, value);
                 return;
             }
 
@@ -147,9 +149,9 @@ namespace Microsoft.Azure.Cosmos
 
         public void Clear()
         {
-            foreach (KeyValuePair<string, CosmosCustomHeader> knownHeader in this.knownHeaders)
+            foreach (KeyValuePair<string, PropertyInfo> knownHeader in this.knownHeaders)
             {
-                knownHeader.Value.Set(null);
+                knownHeader.Value.SetValue(this.instance, null);
             }
 
             if (this.headers.IsValueCreated)
@@ -191,14 +193,14 @@ namespace Microsoft.Azure.Cosmos
 
         public string[] AllKeys()
         {
-            return this.knownHeaders.Where(header => !string.IsNullOrEmpty(header.Value.Get()))
+            return this.knownHeaders.Where(header => !string.IsNullOrEmpty((string)header.Value.GetValue(this.instance)))
                                         .Select(header => header.Key)
                                         .Concat(this.headers.Value.Keys).ToArray();
         }
 
         public IEnumerable<string> Keys()
         {
-            foreach (KeyValuePair<string, CosmosCustomHeader> knownHeader in this.knownHeaders.Where(header => !string.IsNullOrEmpty(header.Value.Get())))
+            foreach (KeyValuePair<string, PropertyInfo> knownHeader in this.knownHeaders.Where(header => !string.IsNullOrEmpty((string)header.Value.GetValue(this.instance))))
             {
                 yield return knownHeader.Key;
             }
@@ -216,11 +218,11 @@ namespace Microsoft.Azure.Cosmos
 
         public IEnumerator<string> GetEnumerator()
         {
-            using (Dictionary<string, CosmosCustomHeader>.Enumerator customHeaderIterator = this.knownHeaders.GetEnumerator())
+            using (Dictionary<string, PropertyInfo>.Enumerator customHeaderIterator = this.knownHeaders.GetEnumerator())
             {
                 while (customHeaderIterator.MoveNext())
                 {
-                    string customValue = customHeaderIterator.Current.Value.Get();
+                    string customValue = (string)customHeaderIterator.Current.Value.GetValue(this.instance);
                     if (!string.IsNullOrEmpty(customValue))
                     {
                         yield return customHeaderIterator.Current.Key;
@@ -264,17 +266,21 @@ namespace Microsoft.Azure.Cosmos
             return (T)(object)value;
         }
 
-        internal static KeyValuePair<string, PropertyInfo>[] GetHeaderAttributes<T>()
+        internal static Dictionary<string, PropertyInfo> GetHeaderAttributes<T>()
         {
             IEnumerable<PropertyInfo> knownHeaderProperties = typeof(T)
                     .GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
                     .Where(p => p.GetCustomAttributes(typeof(CosmosKnownHeaderAttribute), false).Any());
 
-            return knownHeaderProperties.Select(
-                knownProperty =>
-                new KeyValuePair<string, PropertyInfo>(
-                    ((CosmosKnownHeaderAttribute)knownProperty.GetCustomAttributes(typeof(CosmosKnownHeaderAttribute), false).First()).HeaderName,
-                    knownProperty)).ToArray();
+            Dictionary<string, PropertyInfo> result = new Dictionary<string, PropertyInfo>();
+
+            foreach (PropertyInfo p in knownHeaderProperties)
+            {
+                result.Add(((CosmosKnownHeaderAttribute)p.GetCustomAttributes(typeof(CosmosKnownHeaderAttribute), false).First()).HeaderName,
+                    p);
+            }
+
+            return result;
         }
 
         private static Dictionary<string, string> CreateDictionary()
@@ -294,7 +300,7 @@ namespace Microsoft.Azure.Cosmos
 
         private int CountKnownHeaders()
         {
-            return this.knownHeaders.Where(customHeader => !string.IsNullOrEmpty(customHeader.Value.Get())).Count();
+            return this.knownHeaders.Where(customHeader => !string.IsNullOrEmpty((string)customHeader.Value.GetValue(this.instance))).Count();
         }
     }
 }
