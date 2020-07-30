@@ -16,7 +16,6 @@
     <FileVersion>$(ClientVersion)</FileVersion>
     <Authors>Microsoft</Authors>
     <TargetFramework>netstandard2.0</TargetFramework>
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>Microsoft.Azure.Cosmos.Client</AssemblyName>
     <Title>Microsoft Azure Cosmos DB Client library</Title>
@@ -40,10 +39,6 @@
     <RootNamespace>Microsoft.Azure.Cosmos</RootNamespace>
     <NoWarn>NU5125</NoWarn>
   </PropertyGroup>
-
-  <ItemGroup>
-    <AdditionalFiles Include="stylecop.json" />
-  </ItemGroup>
 
   <ItemGroup>
     <Compile Remove="RuntimePerfCounters.cs" />
@@ -77,14 +72,11 @@
 
   <ItemGroup Condition=" '$(ProjectRef)' != 'True' ">
     <PackageReference Include="Microsoft.Azure.Cosmos.Serialization.HybridRow" Version="[$(HybridRowVersion)]" PrivateAssets="All" />
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="System.Numerics.Vectors" Version="4.5.0" />
     <PackageReference Include="Newtonsoft.Json" Version="10.0.2" />
-    <PackageReference Include="StyleCop.Analyzers" Version="1.1.118" PrivateAssets="All" />
-    <PackageReference Include="Microsoft.VisualStudio.Threading.Analyzers" Version="16.0.102" PrivateAssets="All" />
 
     <!--Direct Dependencies-->
     <PackageReference Include="System.Configuration.ConfigurationManager" Version="4.5.0" />
