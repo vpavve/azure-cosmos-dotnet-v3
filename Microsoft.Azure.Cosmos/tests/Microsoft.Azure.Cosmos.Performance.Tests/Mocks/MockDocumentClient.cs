@@ -103,8 +103,7 @@ namespace Microsoft.Azure.Cosmos.Performance.Tests
             string resourceAddress,
             string resourceType,
             string requestVerb,
-            INameValueCollection headers,
-            AuthorizationTokenType tokenType) // unused, use token based upon what is passed in constructor 
+            INameValueCollection headers)
         {
             // this is masterkey authZ
             headers[HttpConstants.HttpHeaders.XDate] = DateTime.UtcNow.ToString("r", CultureInfo.InvariantCulture);

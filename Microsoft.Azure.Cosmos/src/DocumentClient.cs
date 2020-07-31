@@ -1571,8 +1571,7 @@ namespace Microsoft.Azure.Cosmos
                 request.ResourceAddress,
                 PathsHelper.GetResourcePath(request.ResourceType),
                 verb,
-                request.Headers,
-                AuthorizationTokenType.PrimaryMasterKey);
+                request.Headers);
 
             // Unit-test hook
             if (testAuthorization != null)
@@ -6387,8 +6386,7 @@ namespace Microsoft.Azure.Cosmos
             string resourceAddress,
             string resourceType,
             string requestVerb,
-            INameValueCollection headers,
-            AuthorizationTokenType tokenType) // unused, use token based upon what is passed in constructor 
+            INameValueCollection headers)
         {
             if (this.hasAuthKeyResourceToken && this.resourceTokens == null)
             {

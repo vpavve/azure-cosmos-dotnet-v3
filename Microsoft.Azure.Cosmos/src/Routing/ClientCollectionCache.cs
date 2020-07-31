@@ -72,8 +72,7 @@ namespace Microsoft.Azure.Cosmos.Routing
                     request.ResourceAddress,
                     PathsHelper.GetResourcePath(request.ResourceType),
                     HttpConstants.HttpMethods.Get,
-                    request.Headers,
-                    AuthorizationTokenType.PrimaryMasterKey);
+                    request.Headers);
 
                 request.Headers[HttpConstants.HttpHeaders.Authorization] = authorizationToken;
                 using (dianosticContext)
