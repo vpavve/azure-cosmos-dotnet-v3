@@ -9,6 +9,7 @@ namespace Microsoft.Azure.Documents
     using System.Globalization;
     using System.Threading.Tasks;
     using Microsoft.Azure.Cosmos.Core.Trace;
+    using static Microsoft.Azure.Documents.IAuthorizationTokenProvider;
 
     internal static class BarrierRequestHelper
     {
@@ -87,15 +88,19 @@ namespace Microsoft.Azure.Documents
                 case AuthorizationTokenType.PrimaryReadonlyMasterKey:
                 case AuthorizationTokenType.SecondaryMasterKey:
                 case AuthorizationTokenType.SecondaryReadonlyMasterKey:
-                    barrierLsnRequest.Headers[HttpConstants.HttpHeaders.Authorization] = authorizationTokenProvider.GetUserAuthorizationToken(
+                    (string authorizationToken, IDisposableBytes dianosticContext) = await authorizationTokenProvider.GetUserAuthorizationAsync(
                         barrierLsnRequest.ResourceAddress,
                         isCollectionHeadRequest ? PathsHelper.GetResourcePath(ResourceType.Collection) : PathsHelper.GetResourcePath(ResourceType.Database),
                         HttpConstants.HttpMethods.Head,
                         barrierLsnRequest.Headers,
-                        originalRequestTokenType
-                        , out _);
+                        originalRequestTokenType);
+                    using (dianosticContext)
+                    {
+                        barrierLsnRequest.Headers[HttpConstants.HttpHeaders.Authorization] = authorizationToken;
+                    }
                     break;
 
+#if !COSMOSCLIENT
                 case AuthorizationTokenType.SystemAll:
                 case AuthorizationTokenType.SystemReadOnly:
                 case AuthorizationTokenType.SystemReadWrite:
@@ -111,7 +116,7 @@ namespace Microsoft.Azure.Documents
                         HttpConstants.HttpMethods.Head,
                         resourceId: null);
                     break;
-
+#endif
                 case AuthorizationTokenType.ResourceToken:
                     barrierLsnRequest.Headers[HttpConstants.HttpHeaders.Authorization] = request.Headers[HttpConstants.HttpHeaders.Authorization];
                     break;

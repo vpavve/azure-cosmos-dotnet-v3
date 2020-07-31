@@ -10,6 +10,7 @@ namespace Microsoft.Azure.Cosmos.Routing
     using Microsoft.Azure.Cosmos.Common;
     using Microsoft.Azure.Documents;
     using Microsoft.Azure.Documents.Collections;
+    using static Microsoft.Azure.Documents.IAuthorizationTokenProvider;
 
     /// <summary>
     /// Caches collection information.
@@ -67,16 +68,17 @@ namespace Microsoft.Azure.Cosmos.Routing
             {
                 request.Headers[HttpConstants.HttpHeaders.XDate] = DateTime.UtcNow.ToString("r");
 
-                string payload;
-                string authorizationToken = this.tokenProvider.GetUserAuthorizationToken(
+                (string authorizationToken, IDisposableBytes dianosticContext) = await this.tokenProvider.GetUserAuthorizationAsync(
                     request.ResourceAddress,
                     PathsHelper.GetResourcePath(request.ResourceType),
                     HttpConstants.HttpMethods.Get,
                     request.Headers,
-                    AuthorizationTokenType.PrimaryMasterKey,
-                    out payload);
+                    AuthorizationTokenType.PrimaryMasterKey);
 
                 request.Headers[HttpConstants.HttpHeaders.Authorization] = authorizationToken;
+                using (dianosticContext)
+                {
+                }
 
                 using (new ActivityScope(Guid.NewGuid()))
                 {

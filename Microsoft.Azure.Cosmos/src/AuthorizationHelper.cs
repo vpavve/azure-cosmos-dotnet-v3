@@ -14,6 +14,7 @@ namespace Microsoft.Azure.Cosmos
     using Microsoft.Azure.Cosmos.Core.Trace;
     using Microsoft.Azure.Documents;
     using Microsoft.Azure.Documents.Collections;
+    using static Microsoft.Azure.Documents.IAuthorizationTokenProvider;
 
     // This class is used by both client (for generating the auth header with master/system key) and 
     // by the G/W when verifying the auth header. Some additional logic is also used by management service.
@@ -125,7 +126,7 @@ namespace Microsoft.Azure.Cosmos
 
         // This is a helper for both system and master keys
         [SuppressMessage("Microsoft.Globalization", "CA1308:NormalizeStringsToUppercase", Justification = "HTTP Headers are ASCII")]
-        public static string GenerateKeyAuthorizationSignature(string verb,
+        public static (string, IDisposableBytes) GenerateKeyAuthorizationSignature(string verb,
             string resourceId,
             string resourceType,
             INameValueCollection headers,
@@ -138,13 +139,13 @@ namespace Microsoft.Azure.Cosmos
                 headers,
                 stringHMACSHA256Helper,
                 out ArrayOwner payloadStream);
-            using (payloadStream)
-            {
-                return HttpUtility.UrlEncode(string.Format(CultureInfo.InvariantCulture, Constants.Properties.AuthorizationFormat,
+
+            string token = HttpUtility.UrlEncode(string.Format(CultureInfo.InvariantCulture, Constants.Properties.AuthorizationFormat,
                     Constants.Properties.MasterToken,
                     Constants.Properties.TokenVersion,
                     authorizationToken));
-            }
+
+            return (token, payloadStream);
         }
 
         // This is a helper for both system and master keys
@@ -813,7 +814,7 @@ namespace Microsoft.Azure.Cosmos
             return actualByteCount;
         }
 
-        public struct ArrayOwner : IDisposable
+        public struct ArrayOwner : IDisposableBytes
         {
             private readonly ArrayPool<byte> pool;
 
@@ -832,6 +833,34 @@ namespace Microsoft.Azure.Cosmos
                     this.pool?.Return(this.Buffer.Array);
                     this.Buffer = default;
                 }
+            }
+
+            public string GetDiagnosticsPayload()
+            {
+                return ArrayOwner.NormalizeAuthorizationPayload(Encoding.UTF8.GetString(this.Buffer.Array, this.Buffer.Offset, (int)this.Buffer.Count));
+            }
+
+            private static string NormalizeAuthorizationPayload(string input)
+            {
+                const int expansionBuffer = 12;
+                StringBuilder builder = new StringBuilder(input.Length + expansionBuffer);
+                for (int i = 0; i < input.Length; i++)
+                {
+                    switch (input[i])
+                    {
+                        case '\n':
+                            builder.Append("\\n");
+                            break;
+                        case '/':
+                            builder.Append("\\/");
+                            break;
+                        default:
+                            builder.Append(input[i]);
+                            break;
+                    }
+                }
+
+                return builder.ToString();
             }
         }
     }

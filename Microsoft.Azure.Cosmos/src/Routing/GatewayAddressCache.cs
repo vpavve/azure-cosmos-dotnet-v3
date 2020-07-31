@@ -21,6 +21,7 @@ namespace Microsoft.Azure.Cosmos.Routing
     using Microsoft.Azure.Documents.Collections;
     using Microsoft.Azure.Documents.Rntbd;
     using Microsoft.Azure.Documents.Routing;
+    using static Microsoft.Azure.Documents.IAuthorizationTokenProvider;
 
     internal class GatewayAddressCache : IAddressCache, IDisposable
     {
@@ -420,13 +421,15 @@ namespace Microsoft.Azure.Cosmos.Routing
             string resourceTypeToSign = PathsHelper.GetResourcePath(resourceType);
 
             headers.Set(HttpConstants.HttpHeaders.XDate, DateTime.UtcNow.ToString("r", CultureInfo.InvariantCulture));
-            string token = this.tokenProvider.GetUserAuthorizationToken(
+            (string token, IDisposableBytes dianosticContext) = await this.tokenProvider.GetUserAuthorizationAsync(
                 resourceAddress,
                 resourceTypeToSign,
                 HttpConstants.HttpMethods.Get,
                 headers,
-                AuthorizationTokenType.PrimaryMasterKey,
-                payload: out _);
+                AuthorizationTokenType.PrimaryMasterKey);
+            using (dianosticContext)
+            {
+            }
 
             headers.Set(HttpConstants.HttpHeaders.Authorization, token);
 
@@ -475,13 +478,17 @@ namespace Microsoft.Azure.Cosmos.Routing
             string token = null;
             try
             {
-                token = this.tokenProvider.GetUserAuthorizationToken(
+                (string authorizationToken, IDisposableBytes diagnosticContext) = await this.tokenProvider.GetUserAuthorizationAsync(
                     collectionRid,
                     resourceTypeToSign,
                     HttpConstants.HttpMethods.Get,
                     headers,
-                    AuthorizationTokenType.PrimaryMasterKey,
-                    payload: out _);
+                    AuthorizationTokenType.PrimaryMasterKey);
+
+                using (diagnosticContext)
+                {
+                    token = authorizationToken;
+                }
             }
             catch (UnauthorizedException)
             {
@@ -491,13 +498,17 @@ namespace Microsoft.Azure.Cosmos.Routing
             {
                 // User doesn't have rid based resource token. Maybe he has name based.
                 string collectionAltLink = PathsHelper.GetCollectionPath(request.ResourceAddress);
-                token = this.tokenProvider.GetUserAuthorizationToken(
+                (string authorizationToken, IDisposableBytes diagnosticContext) = await this.tokenProvider.GetUserAuthorizationAsync(
                         collectionAltLink,
                         resourceTypeToSign,
                         HttpConstants.HttpMethods.Get,
                         headers,
-                        AuthorizationTokenType.PrimaryMasterKey,
-                        payload: out _);
+                        AuthorizationTokenType.PrimaryMasterKey);
+
+                using (diagnosticContext)
+                {
+                    token = authorizationToken;
+                }
             }
 
             headers.Set(HttpConstants.HttpHeaders.Authorization, token);

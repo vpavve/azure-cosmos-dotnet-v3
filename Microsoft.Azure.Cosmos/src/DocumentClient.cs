@@ -27,6 +27,7 @@ namespace Microsoft.Azure.Cosmos
     using Microsoft.Azure.Documents.Collections;
     using Microsoft.Azure.Documents.Routing;
     using Newtonsoft.Json;
+    using static Microsoft.Azure.Documents.IAuthorizationTokenProvider;
 
     /// <summary>
     /// Provides a client-side logical representation for the Azure Cosmos DB service.
@@ -75,7 +76,7 @@ namespace Microsoft.Azure.Cosmos
     /// </para>
     ///
     /// </remarks>
-    internal partial class DocumentClient : IDisposable, IAuthorizationTokenProvider, ICosmosAuthorizationTokenProvider, IDocumentClient, IDocumentClientInternal
+    internal partial class DocumentClient : IDisposable, IAuthorizationTokenProvider, IDocumentClient, IDocumentClientInternal
     {
         private const string AllowOverrideStrongerConsistency = "AllowOverrideStrongerConsistency";
         private const string MaxConcurrentConnectionOpenConfig = "MaxConcurrentConnectionOpenRequests";
@@ -1529,16 +1530,36 @@ namespace Microsoft.Azure.Cosmos
             return Task.FromResult<Documents.ConsistencyLevel?>(this.desiredConsistencyLevel);
         }
 
-        internal async Task<DocumentServiceResponse> ProcessRequestAsync(
+        internal Task<DocumentServiceResponse> ProcessRequestAsync(
             string verb,
             DocumentServiceRequest request,
             IDocumentClientRetryPolicy retryPolicyInstance,
             CancellationToken cancellationToken,
-            string testAuthorization = null) // Only for unit-tests
+            IDisposableBytes testAuthorization = null) // Only for unit-tests
+        {
+            return this.AuthorizeAndProcessRequestAsync(
+                verb,
+                request,
+                (request, token) => this.ProcessRequestAsync(request, retryPolicyInstance, token),
+                cancellationToken,
+                testAuthorization);
+        }
+
+        internal async Task<DocumentServiceResponse> AuthorizeAndProcessRequestAsync(
+            string verb,
+            DocumentServiceRequest request,
+            Func<DocumentServiceRequest, CancellationToken, Task<DocumentServiceResponse>> executor,
+            CancellationToken cancellationToken,
+            IDisposableBytes testAuthorization = null) // Only for unit-tests
         {
             if (request == null)
             {
                 throw new ArgumentNullException(nameof(request));
+            }
+
+            if (executor == null)
+            {
+                throw new ArgumentNullException(nameof(executor));
             }
 
             if (verb == null)
@@ -1546,59 +1567,60 @@ namespace Microsoft.Azure.Cosmos
                 throw new ArgumentNullException(nameof(verb));
             }
 
-            string payload;
-            string authorization = ((IAuthorizationTokenProvider)this).GetUserAuthorizationToken(
+            (string authorization, IDisposableBytes authDiagnosticsContext) = await ((IAuthorizationTokenProvider)this).GetUserAuthorizationAsync(
                 request.ResourceAddress,
                 PathsHelper.GetResourcePath(request.ResourceType),
                 verb,
                 request.Headers,
-                AuthorizationTokenType.PrimaryMasterKey,
-                out payload);
+                AuthorizationTokenType.PrimaryMasterKey);
 
             // Unit-test hook
             if (testAuthorization != null)
             {
-                payload = testAuthorization;
-                authorization = testAuthorization;
+                authDiagnosticsContext = testAuthorization;
+                authorization = testAuthorization.GetDiagnosticsPayload();
             }
             request.Headers[HttpConstants.HttpHeaders.Authorization] = authorization;
 
-            try
+            using (authDiagnosticsContext)
             {
-                return await this.ProcessRequestAsync(request, retryPolicyInstance, cancellationToken);
-            }
-            catch (DocumentClientException dce)
-            {
-                if (payload != null
-                    && dce.Message != null
-                    && dce.StatusCode.HasValue
-                    && dce.StatusCode.Value == HttpStatusCode.Unauthorized
-                    && dce.Message.Contains(DocumentClient.MacSignatureString))
+                try
                 {
-                    // The following code is added such that we get trace data on unexpected 401/HMAC errors and it is
-                    //   disabled by default. The trace will be trigger only when "enableAuthFailureTraces" named configuration 
-                    //   is set to true (currently true for CTL runs).
-                    //   For production we will work directly with specific customers in order to enable this configuration.
-                    string normalizedPayload = DocumentClient.NormalizeAuthorizationPayload(payload);
-                    if (this.enableAuthFailureTraces)
-                    {
-                        string tokenFirst5 = HttpUtility.UrlDecode(authorization).Split('&')[2].Split('=')[1].Substring(0, 5);
-                        ulong authHash = 0;
-                        if (this.authKeyHashFunction?.Key != null)
-                        {
-                            byte[] bytes = Encoding.UTF8.GetBytes(this.authKeyHashFunction?.Key?.ToString());
-                            authHash = Documents.Routing.MurmurHash3.Hash64(bytes, bytes.Length);
-                        }
-                        DefaultTrace.TraceError("Un-expected authorization payload mis-match. Actual payload={0}, token={1}..., hash={2:X}..., error={3}",
-                            normalizedPayload, tokenFirst5, authHash, dce.Message);
-                    }
-                    else
-                    {
-                        DefaultTrace.TraceError("Un-expected authorization payload mis-match. Actual {0} service expected {1}", normalizedPayload, dce.Message);
-                    }
+                    return await executor(request, cancellationToken);
                 }
+                catch (DocumentClientException dce)
+                {
+                    if (authDiagnosticsContext != null
+                        && dce.Message != null
+                        && dce.StatusCode.HasValue
+                        && dce.StatusCode.Value == HttpStatusCode.Unauthorized
+                        && dce.Message.Contains(DocumentClient.MacSignatureString))
+                    {
+                        // The following code is added such that we get trace data on unexpected 401/HMAC errors and it is
+                        //   disabled by default. The trace will be trigger only when "enableAuthFailureTraces" named configuration 
+                        //   is set to true (currently true for CTL runs).
+                        //   For production we will work directly with specific customers in order to enable this configuration.
+                        string normalizedPayload = authDiagnosticsContext.GetDiagnosticsPayload();
+                        if (this.enableAuthFailureTraces)
+                        {
+                            string tokenFirst5 = HttpUtility.UrlDecode(authorization).Split('&')[2].Split('=')[1].Substring(0, 5);
+                            ulong authHash = 0;
+                            if (this.authKeyHashFunction?.Key != null)
+                            {
+                                byte[] bytes = Encoding.UTF8.GetBytes(this.authKeyHashFunction?.Key?.ToString());
+                                authHash = Documents.Routing.MurmurHash3.Hash64(bytes, bytes.Length);
+                            }
+                            DefaultTrace.TraceError("Un-expected authorization payload mis-match. Actual payload={0}, token={1}..., hash={2:X}..., error={3}",
+                                normalizedPayload, tokenFirst5, authHash, dce.Message);
+                        }
+                        else
+                        {
+                            DefaultTrace.TraceError("Un-expected authorization payload mis-match. Actual {0} service expected {1}", normalizedPayload, dce.Message);
+                        }
+                    }
 
-                throw;
+                    throw;
+                }
             }
         }
 
@@ -1619,29 +1641,6 @@ namespace Microsoft.Azure.Cosmos
                 IStoreModel storeProxy = this.GetStoreProxy(request);
                 return await storeProxy.ProcessMessageAsync(request, cancellationToken);
             }
-        }
-
-        private static string NormalizeAuthorizationPayload(string input)
-        {
-            const int expansionBuffer = 12;
-            StringBuilder builder = new StringBuilder(input.Length + expansionBuffer);
-            for (int i = 0; i < input.Length; i++)
-            {
-                switch (input[i])
-                {
-                    case '\n':
-                        builder.Append("\\n");
-                        break;
-                    case '/':
-                        builder.Append("\\/");
-                        break;
-                    default:
-                        builder.Append(input[i]);
-                        break;
-                }
-            }
-
-            return builder.ToString();
         }
 
         private void ThrowIfDisposed()
@@ -6384,68 +6383,19 @@ namespace Microsoft.Azure.Cosmos
             return false;
         }
 
-        string IAuthorizationTokenProvider.GetUserAuthorizationToken(
+        ValueTask<(string token, IDisposableBytes payload)> IAuthorizationTokenProvider.GetUserAuthorizationAsync(
             string resourceAddress,
             string resourceType,
             string requestVerb,
             INameValueCollection headers,
-            AuthorizationTokenType tokenType,
-            out string payload) // unused, use token based upon what is passed in constructor 
-        {
-            string authorizationToken = this.GetUserAuthorizationTokenCore(
-                resourceAddress,
-                resourceType,
-                requestVerb,
-                headers,
-                tokenType,
-                out AuthorizationHelper.ArrayOwner arrayOwner);
-            using (arrayOwner)
-            {
-                if (arrayOwner.Buffer.Count == 0)
-                {
-                    payload = null;
-                }
-                else
-                {
-                    payload = Encoding.UTF8.GetString(arrayOwner.Buffer.Array, arrayOwner.Buffer.Offset, (int)arrayOwner.Buffer.Count);
-                }
-                return authorizationToken;
-            }
-        }
-
-        string ICosmosAuthorizationTokenProvider.GetUserAuthorizationToken(
-            string resourceAddress,
-            string resourceType,
-            string requestVerb,
-            INameValueCollection headers,
-            AuthorizationTokenType tokenType)
-        {
-            string authorizationToken = this.GetUserAuthorizationTokenCore(
-                resourceAddress,
-                resourceType,
-                requestVerb,
-                headers,
-                tokenType,
-                out AuthorizationHelper.ArrayOwner arrayOwner);
-            using (arrayOwner)
-            {
-                return authorizationToken;
-            }
-        }
-
-        private string GetUserAuthorizationTokenCore(
-            string resourceAddress,
-            string resourceType,
-            string requestVerb,
-            INameValueCollection headers,
-            AuthorizationTokenType tokenType,
-            out AuthorizationHelper.ArrayOwner payload) // unused, use token based upon what is passed in constructor 
+            AuthorizationTokenType tokenType) // unused, use token based upon what is passed in constructor 
         {
             if (this.hasAuthKeyResourceToken && this.resourceTokens == null)
             {
                 // If the input auth token is a resource token, then use it as a bearer-token.
-                payload = default;
-                return HttpUtility.UrlEncode(this.authKeyResourceToken);
+                string token = HttpUtility.UrlEncode(this.authKeyResourceToken);
+                IDisposableBytes payload = null;
+                return new ValueTask<(string, IDisposableBytes)>((token, payload));
             }
 
             if (this.authKeyHashFunction != null)
@@ -6453,8 +6403,10 @@ namespace Microsoft.Azure.Cosmos
                 // this is masterkey authZ
                 headers[HttpConstants.HttpHeaders.XDate] = DateTime.UtcNow.ToString("r", CultureInfo.InvariantCulture);
 
-                return AuthorizationHelper.GenerateKeyAuthorizationSignature(
-                        requestVerb, resourceAddress, resourceType, headers, this.authKeyHashFunction, out payload);
+                (string token, IDisposableBytes diagnosticContext) = AuthorizationHelper.GenerateKeyAuthorizationSignature(
+                        requestVerb, resourceAddress, resourceType, headers, this.authKeyHashFunction);
+
+                return new ValueTask<(string, IDisposableBytes)>((token, diagnosticContext));
             }
             else
             {
@@ -6506,8 +6458,7 @@ namespace Microsoft.Azure.Cosmos
                            CultureInfo.InvariantCulture, ClientResources.AuthTokenNotFound, resourceAddress));
                     }
 
-                    payload = default;
-                    return HttpUtility.UrlEncode(resourceToken);
+                    return new ValueTask<(string, IDisposableBytes)>((HttpUtility.UrlEncode(resourceToken), null));
                 }
                 else
                 {
@@ -6577,29 +6528,9 @@ namespace Microsoft.Azure.Cosmos
                             CultureInfo.InvariantCulture, ClientResources.AuthTokenNotFound, resourceAddress));
                     }
 
-                    payload = default;
-                    return HttpUtility.UrlEncode(resourceToken);
+                    return new ValueTask<(string, IDisposableBytes)>((HttpUtility.UrlEncode(resourceToken), null));
                 }
             }
-        }
-
-        Task IAuthorizationTokenProvider.AddSystemAuthorizationHeaderAsync(
-            DocumentServiceRequest request,
-            string federationId,
-            string verb,
-            string resourceId)
-        {
-            request.Headers[HttpConstants.HttpHeaders.XDate] = DateTime.UtcNow.ToString("r", CultureInfo.InvariantCulture);
-
-            request.Headers[HttpConstants.HttpHeaders.Authorization] = ((IAuthorizationTokenProvider)this).GetUserAuthorizationToken(
-                resourceId ?? request.ResourceAddress,
-                PathsHelper.GetResourcePath(request.ResourceType),
-                verb,
-                request.Headers,
-                request.RequestAuthorizationTokenType,
-                payload: out _);
-
-            return Task.FromResult(0);
         }
 
         #endregion

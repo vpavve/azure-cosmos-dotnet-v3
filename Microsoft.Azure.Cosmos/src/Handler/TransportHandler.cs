@@ -67,7 +67,7 @@ namespace Microsoft.Azure.Cosmos.Handlers
             }
         }
 
-        internal async Task<DocumentServiceResponse> ProcessMessageAsync(
+        internal Task<DocumentServiceResponse> ProcessMessageAsync(
             RequestMessage request,
             CancellationToken cancellationToken)
         {
@@ -78,28 +78,24 @@ namespace Microsoft.Azure.Cosmos.Handlers
 
             DocumentServiceRequest serviceRequest = request.ToDocumentServiceRequest();
 
-            //TODO: extrace auth into a separate handler
-            string authorization = ((ICosmosAuthorizationTokenProvider)this.client.DocumentClient).GetUserAuthorizationToken(
-                serviceRequest.ResourceAddress,
-                PathsHelper.GetResourcePath(request.ResourceType),
+            return this.client.DocumentClient.AuthorizeAndProcessRequestAsync(
                 request.Method.ToString(),
-                serviceRequest.Headers,
-                AuthorizationTokenType.PrimaryMasterKey);
-
-            serviceRequest.Headers[HttpConstants.HttpHeaders.Authorization] = authorization;
-
-            IStoreModel storeProxy = this.client.DocumentClient.GetStoreProxy(serviceRequest);
-            using (request.DiagnosticsContext.CreateScope(storeProxy.GetType().FullName))
-            {
-                if (request.OperationType == OperationType.Upsert)
-                {
-                    return await this.ProcessUpsertAsync(storeProxy, serviceRequest, cancellationToken);
-                }
-                else
-                {
-                    return await storeProxy.ProcessMessageAsync(serviceRequest, cancellationToken);
-                }
-            }
+                serviceRequest,
+                async (DocumentServiceRequest, token) => {
+                    IStoreModel storeProxy = this.client.DocumentClient.GetStoreProxy(serviceRequest);
+                    using (request.DiagnosticsContext.CreateScope(storeProxy.GetType().FullName))
+                    {
+                        if (request.OperationType == OperationType.Upsert)
+                        {
+                            return await this.ProcessUpsertAsync(storeProxy, serviceRequest, token);
+                        }
+                        else
+                        {
+                            return await storeProxy.ProcessMessageAsync(serviceRequest, token);
+                        }
+                    }
+                },
+                cancellationToken);
         }
 
         internal static ResponseMessage AggregateExceptionConverter(AggregateException aggregateException, RequestMessage request)

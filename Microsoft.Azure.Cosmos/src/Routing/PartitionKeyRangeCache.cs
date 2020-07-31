@@ -18,6 +18,7 @@ namespace Microsoft.Azure.Cosmos.Routing
     using Microsoft.Azure.Documents;
     using Microsoft.Azure.Documents.Collections;
     using Microsoft.Azure.Documents.Routing;
+    using static Microsoft.Azure.Documents.IAuthorizationTokenProvider;
 
     internal class PartitionKeyRangeCache : IRoutingMapProvider, ICollectionRoutingMapCache
     {
@@ -224,14 +225,18 @@ namespace Microsoft.Azure.Cosmos.Routing
                 string authorizationToken = null;
                 try
                 {
-                    authorizationToken =
-                        this.authorizationTokenProvider.GetUserAuthorizationToken(
+                    (string token, IDisposableBytes diagnosticContext) =
+                        await this.authorizationTokenProvider.GetUserAuthorizationAsync(
                     request.ResourceAddress,
                     PathsHelper.GetResourcePath(request.ResourceType),
                     HttpConstants.HttpMethods.Get,
                     request.Headers,
-                    AuthorizationTokenType.PrimaryMasterKey,
-                    payload: out _);
+                    AuthorizationTokenType.PrimaryMasterKey);
+
+                    using (diagnosticContext)
+                    {
+                        authorizationToken = token;
+                    }
                 }
                 catch (UnauthorizedException)
                 {
