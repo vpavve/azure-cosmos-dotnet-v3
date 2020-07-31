@@ -7,7 +7,7 @@ namespace Microsoft.Azure.Documents
     using System;
     using System.Threading.Tasks;
 
-    internal interface IAuthorizationTokenProvider
+    internal interface IAuthorizationTokenProvider : IDisposable
     {
         /// <summary>
         /// Generates a Authorization Token for a given resource type, address and action.

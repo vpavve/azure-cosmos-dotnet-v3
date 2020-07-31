@@ -15,7 +15,7 @@ namespace Microsoft.Azure.Cosmos
     using Microsoft.Azure.Documents;
     using Microsoft.Azure.Documents.Client;
 
-    internal partial class DocumentClient : IDisposable, IAuthorizationTokenProvider
+    internal partial class DocumentClient : IDisposable
     {
         #region Create operation
 

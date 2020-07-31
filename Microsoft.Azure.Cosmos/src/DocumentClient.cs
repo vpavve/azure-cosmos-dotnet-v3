@@ -76,7 +76,7 @@ namespace Microsoft.Azure.Cosmos
     /// </para>
     ///
     /// </remarks>
-    internal partial class DocumentClient : IDisposable, IAuthorizationTokenProvider, IDocumentClient, IDocumentClientInternal
+    internal partial class DocumentClient : IDisposable, IDocumentClient, IDocumentClientInternal
     {
         private const string AllowOverrideStrongerConsistency = "AllowOverrideStrongerConsistency";
         private const string MaxConcurrentConnectionOpenConfig = "MaxConcurrentConnectionOpenRequests";
@@ -113,7 +113,6 @@ namespace Microsoft.Azure.Cosmos
 
         private static readonly TimeSpan GatewayRequestTimeout = TimeSpan.FromSeconds(65);
         // Gateway has backoff/retry logic to hide transient errors.
-        private readonly IDictionary<string, List<PartitionKeyAndResourceTokenPair>> resourceTokens;
         private RetryPolicy retryPolicy;
         private bool allowOverrideStrongerConsistency = false;
         private int maxConcurrentConnectionOpenRequests = Environment.ProcessorCount * MaxConcurrentConnectionOpenRequestsPerProcessor;
@@ -131,9 +130,7 @@ namespace Microsoft.Azure.Cosmos
         private int rntbdSendHangDetectionTimeSeconds = DefaultRntbdSendHangDetectionTimeSeconds;
         private bool enableCpuMonitor = DefaultEnableCpuMonitor;
         private bool enableAuthFailureTraces = EnableAuthFailureTraces;
-
-        //Auth
-        private IComputeHash authKeyHashFunction;
+        private IAuthorizationTokenProvider authorizationTokenProvider;
 
         //Consistency
         private Documents.ConsistencyLevel? desiredConsistencyLevel;
@@ -168,9 +165,6 @@ namespace Microsoft.Azure.Cosmos
 
         //SessionContainer.
         internal ISessionContainer sessionContainer;
-
-        private readonly bool hasAuthKeyResourceToken;
-        private readonly string authKeyResourceToken = string.Empty;
 
         private DocumentClientEventSource eventSource;
         internal Task initializeTask;
@@ -220,7 +214,7 @@ namespace Microsoft.Azure.Cosmos
 
             if (authKey != null)
             {
-                this.authKeyHashFunction = new SecureStringHMACSHA256Helper(authKey);
+                this.authorizationTokenProvider = new MasterKeyAuthTokenProvider(authKey);
             }
 
             this.Initialize(serviceEndpoint, connectionPolicy, desiredConsistencyLevel);
@@ -438,12 +432,11 @@ namespace Microsoft.Azure.Cosmos
 
             if (AuthorizationHelper.IsResourceToken(authKeyOrResourceToken))
             {
-                this.hasAuthKeyResourceToken = true;
-                this.authKeyResourceToken = authKeyOrResourceToken;
+                this.authorizationTokenProvider = new BearerTokenProvider(authKeyOrResourceToken);
             }
             else
             {
-                this.authKeyHashFunction = new StringHMACSHA256Hash(authKeyOrResourceToken);
+                this.authorizationTokenProvider = new MasterKeyAuthTokenProvider(authKeyOrResourceToken);
             }
 
             this.transportClientHandlerFactory = transportClientHandlerFactory;
@@ -628,7 +621,7 @@ namespace Microsoft.Azure.Cosmos
                 throw new ArgumentNullException("resourceTokens");
             }
 
-            this.resourceTokens = new Dictionary<string, List<PartitionKeyAndResourceTokenPair>>();
+            Dictionary<string, List<PartitionKeyAndResourceTokenPair>> tokens = new Dictionary<string, List<PartitionKeyAndResourceTokenPair>>();
 
             foreach (ResourceToken resourceToken in resourceTokens)
             {
@@ -642,10 +635,10 @@ namespace Microsoft.Azure.Cosmos
                 }
 
                 List<PartitionKeyAndResourceTokenPair> tokenList;
-                if (!this.resourceTokens.TryGetValue(resourceIdOrFullName, out tokenList))
+                if (!tokens.TryGetValue(resourceIdOrFullName, out tokenList))
                 {
                     tokenList = new List<PartitionKeyAndResourceTokenPair>();
-                    this.resourceTokens.Add(resourceIdOrFullName, tokenList);
+                    tokens.Add(resourceIdOrFullName, tokenList);
                 }
 
                 tokenList.Add(new PartitionKeyAndResourceTokenPair(
@@ -653,7 +646,7 @@ namespace Microsoft.Azure.Cosmos
                     resourceToken.Token));
             }
 
-            if (!this.resourceTokens.Any())
+            if (!tokens.Any())
             {
                 throw new ArgumentException("permissionFeed");
             }
@@ -662,13 +655,13 @@ namespace Microsoft.Azure.Cosmos
 
             if (AuthorizationHelper.IsResourceToken(firstToken))
             {
-                this.hasAuthKeyResourceToken = true;
-                this.authKeyResourceToken = firstToken;
+                this.authorizationTokenProvider = new HierarchicalBearerTokenProvider(tokens);
                 this.Initialize(serviceEndpoint, connectionPolicy, desiredConsistencyLevel);
+
             }
             else
             {
-                this.authKeyHashFunction = new StringHMACSHA256Hash(firstToken);
+                this.authorizationTokenProvider = new MasterKeyAuthTokenProvider(firstToken);
                 this.Initialize(serviceEndpoint, connectionPolicy, desiredConsistencyLevel);
             }
         }
@@ -701,7 +694,7 @@ namespace Microsoft.Azure.Cosmos
                 throw new DocumentClientException(RMResources.InsufficientResourceTokens, null, null);
             }
 
-            this.resourceTokens = resourceTokens.ToDictionary(
+            IDictionary<string, List<PartitionKeyAndResourceTokenPair>> tokens = resourceTokens.ToDictionary(
                 pair => pair.Key,
                 pair => new List<PartitionKeyAndResourceTokenPair> { new PartitionKeyAndResourceTokenPair(PartitionKeyInternal.Empty, pair.Value) });
 
@@ -713,13 +706,12 @@ namespace Microsoft.Azure.Cosmos
 
             if (AuthorizationHelper.IsResourceToken(firstToken))
             {
-                this.hasAuthKeyResourceToken = true;
-                this.authKeyResourceToken = firstToken;
+                this.authorizationTokenProvider = new HierarchicalBearerTokenProvider(tokens);
                 this.Initialize(serviceEndpoint, connectionPolicy, desiredConsistencyLevel);
             }
             else
             {
-                this.authKeyHashFunction = new StringHMACSHA256Hash(firstToken);
+                this.authorizationTokenProvider = new MasterKeyAuthTokenProvider(firstToken);
                 this.Initialize(serviceEndpoint, connectionPolicy, desiredConsistencyLevel);
             }
         }
@@ -823,8 +815,8 @@ namespace Microsoft.Azure.Cosmos
             catch (DocumentClientException ex)
             {
                 // Clear the caches to ensure that we don't have partial results
-                this.collectionCache = new ClientCollectionCache(this.sessionContainer, this.GatewayStoreModel, this, this.retryPolicy);
-                this.partitionKeyRangeCache = new PartitionKeyRangeCache(this, this.GatewayStoreModel, this.collectionCache);
+                this.collectionCache = new ClientCollectionCache(this.sessionContainer, this.GatewayStoreModel, this.authorizationTokenProvider, this.retryPolicy);
+                this.partitionKeyRangeCache = new PartitionKeyRangeCache(this.authorizationTokenProvider, this.GatewayStoreModel, this.collectionCache);
 
                 DefaultTrace.TraceWarning("{0} occurred while OpenAsync. Exception Message: {1}", ex.ToString(), ex.Message);
             }
@@ -1165,8 +1157,8 @@ namespace Microsoft.Azure.Cosmos
 
             this.GatewayStoreModel = gatewayStoreModel;
 
-            this.collectionCache = new ClientCollectionCache(this.sessionContainer, this.GatewayStoreModel, this, this.retryPolicy);
-            this.partitionKeyRangeCache = new PartitionKeyRangeCache(this, this.GatewayStoreModel, this.collectionCache);
+            this.collectionCache = new ClientCollectionCache(this.sessionContainer, this.GatewayStoreModel, this.authorizationTokenProvider, this.retryPolicy);
+            this.partitionKeyRangeCache = new PartitionKeyRangeCache(this.authorizationTokenProvider, this.GatewayStoreModel, this.collectionCache);
             this.ResetSessionTokenRetryPolicy = new ResetSessionTokenRetryPolicyFactory(this.sessionContainer, this.collectionCache, this.retryPolicy);
 
             if (this.ConnectionPolicy.ConnectionMode == ConnectionMode.Gateway)
@@ -1349,7 +1341,12 @@ namespace Microsoft.Azure.Cosmos
             {
                 // NOTE: if DocumentClient was created using construction taking permission feed and there
                 // are duplicate resource links, we will choose arbitrary token for it here.
-                return (this.resourceTokens != null) ? this.resourceTokens.ToDictionary(pair => pair.Key, pair => pair.Value.First().ResourceToken) : null;
+                if (this.authorizationTokenProvider is HierarchicalBearerTokenProvider hierarchicalBearerTokenProvider)
+                {
+                    return hierarchicalBearerTokenProvider.ResourceTokens;
+                }
+
+                return null;
             }
         }
 
@@ -1364,14 +1361,12 @@ namespace Microsoft.Azure.Cosmos
         {
             get
             {
-                if (this.authKeyHashFunction != null)
+                if (this.authorizationTokenProvider is MasterKeyAuthTokenProvider masterKeyAuth)
                 {
-                    return this.authKeyHashFunction.Key;
+                    return masterKeyAuth.Key;
                 }
-                else
-                {
-                    return null;
-                }
+
+                return null;
             }
         }
 
@@ -1456,10 +1451,10 @@ namespace Microsoft.Azure.Cosmos
                 this.httpClient = null;
             }
 
-            if (this.authKeyHashFunction != null)
+            if (this.authorizationTokenProvider != null)
             {
-                this.authKeyHashFunction.Dispose();
-                this.authKeyHashFunction = null;
+                this.authorizationTokenProvider.Dispose();
+                this.authorizationTokenProvider = null;
             }
 
             if (this.GlobalEndpointManager != null)
@@ -1567,7 +1562,7 @@ namespace Microsoft.Azure.Cosmos
                 throw new ArgumentNullException(nameof(verb));
             }
 
-            (string authorization, IDisposableBytes authDiagnosticsContext) = await ((IAuthorizationTokenProvider)this).GetUserAuthorizationAsync(
+            (string authorization, IDisposableBytes authDiagnosticsContext) = await this.authorizationTokenProvider.GetUserAuthorizationAsync(
                 request.ResourceAddress,
                 PathsHelper.GetResourcePath(request.ResourceType),
                 verb,
@@ -1605,9 +1600,9 @@ namespace Microsoft.Azure.Cosmos
                         {
                             string tokenFirst5 = HttpUtility.UrlDecode(authorization).Split('&')[2].Split('=')[1].Substring(0, 5);
                             ulong authHash = 0;
-                            if (this.authKeyHashFunction?.Key != null)
+                            if (this.authorizationTokenProvider is MasterKeyAuthTokenProvider masterKeyAuth)
                             {
-                                byte[] bytes = Encoding.UTF8.GetBytes(this.authKeyHashFunction?.Key?.ToString());
+                                byte[] bytes = Encoding.UTF8.GetBytes(masterKeyAuth.Key?.ToString());
                                 authHash = Documents.Routing.MurmurHash3.Hash64(bytes, bytes.Length);
                             }
                             DefaultTrace.TraceError("Un-expected authorization payload mis-match. Actual payload={0}, token={1}..., hash={2:X}..., error={3}",
@@ -6363,178 +6358,6 @@ namespace Microsoft.Azure.Cosmos
         }
         #endregion
 
-        #region IAuthorizationTokenProvider
-
-        private bool TryGetResourceToken(string resourceAddress, PartitionKeyInternal partitionKey, out string resourceToken)
-        {
-            resourceToken = null;
-            List<PartitionKeyAndResourceTokenPair> partitionKeyTokenPairs;
-            bool isPartitionKeyAndTokenPairListAvailable = this.resourceTokens.TryGetValue(resourceAddress, out partitionKeyTokenPairs);
-            if (isPartitionKeyAndTokenPairListAvailable)
-            {
-                PartitionKeyAndResourceTokenPair partitionKeyTokenPair = partitionKeyTokenPairs.FirstOrDefault(pair => pair.PartitionKey.Contains(partitionKey));
-                if (partitionKeyTokenPair != null)
-                {
-                    resourceToken = partitionKeyTokenPair.ResourceToken;
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        ValueTask<(string token, IDisposableBytes payload)> IAuthorizationTokenProvider.GetUserAuthorizationAsync(
-            string resourceAddress,
-            string resourceType,
-            string requestVerb,
-            INameValueCollection headers,
-            AuthorizationTokenType tokenType) // unused, use token based upon what is passed in constructor 
-        {
-            if (this.hasAuthKeyResourceToken && this.resourceTokens == null)
-            {
-                // If the input auth token is a resource token, then use it as a bearer-token.
-                string token = HttpUtility.UrlEncode(this.authKeyResourceToken);
-                IDisposableBytes payload = null;
-                return new ValueTask<(string, IDisposableBytes)>((token, payload));
-            }
-
-            if (this.authKeyHashFunction != null)
-            {
-                // this is masterkey authZ
-                headers[HttpConstants.HttpHeaders.XDate] = DateTime.UtcNow.ToString("r", CultureInfo.InvariantCulture);
-
-                (string token, IDisposableBytes diagnosticContext) = AuthorizationHelper.GenerateKeyAuthorizationSignature(
-                        requestVerb, resourceAddress, resourceType, headers, this.authKeyHashFunction);
-
-                return new ValueTask<(string, IDisposableBytes)>((token, diagnosticContext));
-            }
-            else
-            {
-                PartitionKeyInternal partitionKey = PartitionKeyInternal.Empty;
-                string partitionKeyString = headers[HttpConstants.HttpHeaders.PartitionKey];
-                if (partitionKeyString != null)
-                {
-                    partitionKey = PartitionKeyInternal.FromJsonString(partitionKeyString);
-                }
-
-                if (PathsHelper.IsNameBased(resourceAddress))
-                {
-                    string resourceToken = null;
-                    bool isTokenAvailable = false;
-
-                    for (int index = 2; index < ResourceId.MaxPathFragment; index = index + 2)
-                    {
-                        string resourceParent = PathsHelper.GetParentByIndex(resourceAddress, index);
-                        if (resourceParent == null)
-                            break;
-
-                        isTokenAvailable = this.TryGetResourceToken(resourceParent, partitionKey, out resourceToken);
-                        if (isTokenAvailable)
-                            break;
-                    }
-
-                    // Get or Head for collection can be done with any child token
-                    if (!isTokenAvailable && PathsHelper.GetCollectionPath(resourceAddress) == resourceAddress
-                        && (requestVerb == HttpConstants.HttpMethods.Get
-                            || requestVerb == HttpConstants.HttpMethods.Head))
-                    {
-                        string resourceAddressWithSlash = resourceAddress.EndsWith("/", StringComparison.Ordinal)
-                                                              ? resourceAddress
-                                                              : resourceAddress + "/";
-                        foreach (KeyValuePair<string, List<PartitionKeyAndResourceTokenPair>> pair in this.resourceTokens)
-                        {
-                            if (pair.Key.StartsWith(resourceAddressWithSlash, StringComparison.Ordinal))
-                            {
-                                resourceToken = pair.Value[0].ResourceToken;
-                                isTokenAvailable = true;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (!isTokenAvailable)
-                    {
-                        throw new UnauthorizedException(string.Format(
-                           CultureInfo.InvariantCulture, ClientResources.AuthTokenNotFound, resourceAddress));
-                    }
-
-                    return new ValueTask<(string, IDisposableBytes)>((HttpUtility.UrlEncode(resourceToken), null));
-                }
-                else
-                {
-                    string resourceToken = null;
-
-                    // In case there is no directly matching token, look for parent's token.
-                    ResourceId resourceId = ResourceId.Parse(resourceAddress);
-
-                    bool isTokenAvailable = false;
-                    if (resourceId.Attachment != 0 || resourceId.Permission != 0 || resourceId.StoredProcedure != 0
-                        || resourceId.Trigger != 0 || resourceId.UserDefinedFunction != 0)
-                    {
-                        // Use the leaf ID - attachment/permission/sproc/trigger/udf
-                        isTokenAvailable = this.TryGetResourceToken(resourceAddress, partitionKey, out resourceToken);
-                    }
-
-                    if (!isTokenAvailable &&
-                        (resourceId.Attachment != 0 || resourceId.Document != 0))
-                    {
-                        // Use DocumentID for attachment/document
-                        isTokenAvailable = this.TryGetResourceToken(resourceId.DocumentId.ToString(), partitionKey, out resourceToken);
-                    }
-
-                    if (!isTokenAvailable &&
-                        (resourceId.Attachment != 0 || resourceId.Document != 0 || resourceId.StoredProcedure != 0 || resourceId.Trigger != 0
-                        || resourceId.UserDefinedFunction != 0 || resourceId.DocumentCollection != 0))
-                    {
-                        // Use CollectionID for attachment/document/sproc/trigger/udf/collection
-                        isTokenAvailable = this.TryGetResourceToken(resourceId.DocumentCollectionId.ToString(), partitionKey, out resourceToken);
-                    }
-
-                    if (!isTokenAvailable &&
-                        (resourceId.Permission != 0 || resourceId.User != 0))
-                    {
-                        // Use UserID for permission/user
-                        isTokenAvailable = this.TryGetResourceToken(resourceId.UserId.ToString(), partitionKey, out resourceToken);
-                    }
-
-                    if (!isTokenAvailable)
-                    {
-                        // Use DatabaseId if all else fail
-                        isTokenAvailable = this.TryGetResourceToken(resourceId.DatabaseId.ToString(), partitionKey, out resourceToken);
-                    }
-
-                    // Get or Head for collection can be done with any child token
-                    if (!isTokenAvailable && resourceId.DocumentCollection != 0
-                        && (requestVerb == HttpConstants.HttpMethods.Get
-                            || requestVerb == HttpConstants.HttpMethods.Head))
-                    {
-                        foreach (KeyValuePair<string, List<PartitionKeyAndResourceTokenPair>> pair in this.resourceTokens)
-                        {
-                            ResourceId tokenRid;
-                            if (!PathsHelper.IsNameBased(pair.Key) &&
-                                ResourceId.TryParse(pair.Key, out tokenRid) &&
-                                tokenRid.DocumentCollectionId.Equals(resourceId))
-                            {
-                                resourceToken = pair.Value[0].ResourceToken;
-                                isTokenAvailable = true;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (!isTokenAvailable)
-                    {
-                        throw new UnauthorizedException(string.Format(
-                            CultureInfo.InvariantCulture, ClientResources.AuthTokenNotFound, resourceAddress));
-                    }
-
-                    return new ValueTask<(string, IDisposableBytes)>((HttpUtility.UrlEncode(resourceToken), null));
-                }
-            }
-        }
-
-        #endregion
-
         #region Core Implementation
         internal Task<DocumentServiceResponse> CreateAsync(
             DocumentServiceRequest request,
@@ -6676,28 +6499,18 @@ namespace Microsoft.Azure.Cosmos
                 using (HttpRequestMessage request = new HttpRequestMessage())
                 {
                     INameValueCollection headersCollection = new DictionaryNameValueCollection();
-                    string xDate = DateTime.UtcNow.ToString("r");
-                    headersCollection.Add(HttpConstants.HttpHeaders.XDate, xDate);
-                    request.Headers.Add(HttpConstants.HttpHeaders.XDate, xDate);
 
                     // Retrieve the CosmosAccountSettings from the gateway.
-                    string authorizationToken;
-
-                    if (this.hasAuthKeyResourceToken)
-                    {
-                        authorizationToken = HttpUtility.UrlEncode(this.authKeyResourceToken);
-                    }
-                    else
-                    {
-                        authorizationToken = AuthorizationHelper.GenerateKeyAuthorizationSignature(
+                    (string authorizationToken, IDisposableBytes payload) = await AuthorizationHelper.GenerateKeyAuthorizationSignature(
                             HttpConstants.HttpMethods.Get,
                             serviceEndpoint,
                             headersCollection,
-                            this.authKeyHashFunction);
+                            this.authorizationTokenProvider);
+                    using (payload)
+                    {
                     }
 
                     request.Headers.Add(HttpConstants.HttpHeaders.Authorization, authorizationToken);
-
                     request.Method = HttpMethod.Get;
                     request.RequestUri = serviceEndpoint;
 
@@ -6834,7 +6647,7 @@ namespace Microsoft.Azure.Cosmos
             this.AddressResolver = new GlobalAddressResolver(
                 this.GlobalEndpointManager,
                 this.ConnectionPolicy.ConnectionProtocol,
-                this,
+                this.authorizationTokenProvider,
                 this.collectionCache,
                 this.partitionKeyRangeCache,
                 this.accountServiceConfiguration,
@@ -6894,7 +6707,7 @@ namespace Microsoft.Azure.Cosmos
                 this.AddressResolver,
                 this.sessionContainer,
                 this.accountServiceConfiguration,
-                this,
+                this.authorizationTokenProvider,
                 true,
                 this.ConnectionPolicy.EnableReadRequestsFallback ?? (this.accountServiceConfiguration.DefaultConsistencyLevel != Documents.ConsistencyLevel.BoundedStaleness),
                 !this.enableRntbdChannel,
@@ -6922,9 +6735,7 @@ namespace Microsoft.Azure.Cosmos
         {
             GatewayAccountReader accountReader = new GatewayAccountReader(
                     serviceEndpoint: this.ServiceEndpoint,
-                    stringHMACSHA256Helper: this.authKeyHashFunction,
-                    hasResourceToken: this.hasAuthKeyResourceToken,
-                    resourceToken: this.authKeyResourceToken,
+                    this.authorizationTokenProvider,
                     connectionPolicy: this.ConnectionPolicy,
                     httpClient: this.httpClient);
 
@@ -7288,5 +7099,245 @@ namespace Microsoft.Azure.Cosmos
         }
 
         #endregion
+
+        private class MasterKeyAuthTokenProvider : IAuthorizationTokenProvider
+        {
+            //Auth
+            private IComputeHash authKeyHashFunction;
+
+            public MasterKeyAuthTokenProvider(SecureString masterKey)
+            {
+                this.authKeyHashFunction = new SecureStringHMACSHA256Helper(masterKey);
+            }
+
+            public MasterKeyAuthTokenProvider(String masterKey)
+            {
+                this.authKeyHashFunction = new StringHMACSHA256Hash(masterKey);
+            }
+
+            public SecureString Key => this.authKeyHashFunction.Key;
+
+            public void Dispose()
+            {
+                if (this.authKeyHashFunction != null)
+                {
+                    this.authKeyHashFunction.Dispose();
+                    this.authKeyHashFunction = null;
+                }
+            }
+
+            public ValueTask<(string token, IDisposableBytes payload)> GetUserAuthorizationAsync(
+                string resourceAddress,
+                string resourceType,
+                string requestVerb,
+                INameValueCollection headers,
+                AuthorizationTokenType tokenType)
+            {
+                // this is masterkey authZ
+                headers[HttpConstants.HttpHeaders.XDate] = DateTime.UtcNow.ToString("r", CultureInfo.InvariantCulture);
+
+                (string token, IDisposableBytes diagnosticContext) = AuthorizationHelper.GenerateKeyAuthorizationSignature(
+                        requestVerb, resourceAddress, resourceType, headers, this.authKeyHashFunction);
+
+                return new ValueTask<(string, IDisposableBytes)>((token, diagnosticContext));
+            }
+        }
+
+        private class BearerTokenProvider : IAuthorizationTokenProvider
+        {
+            //Auth
+            private string token;
+
+            public BearerTokenProvider(string bearerToken)
+            {
+                this.token = HttpUtility.UrlEncode(bearerToken);
+            }
+
+            public void Dispose()
+            {
+                // Do nothing
+            }
+
+            public ValueTask<(string token, IDisposableBytes payload)> GetUserAuthorizationAsync(
+                string resourceAddress,
+                string resourceType,
+                string requestVerb,
+                INameValueCollection headers,
+                AuthorizationTokenType tokenType)
+            {
+                return new ValueTask<(string, IDisposableBytes)>((this.token, null));
+            }
+        }
+
+        private class HierarchicalBearerTokenProvider : IAuthorizationTokenProvider
+        {
+            //Auth
+            private IDictionary<string, List<PartitionKeyAndResourceTokenPair>> resourceTokens;
+
+            public HierarchicalBearerTokenProvider(IDictionary<string, List<PartitionKeyAndResourceTokenPair>> resourceTokens)
+            {
+                this.resourceTokens = resourceTokens;
+            }
+
+            public IDictionary<string, string> ResourceTokens
+            {
+                get
+                {
+                    return this.resourceTokens.ToDictionary(pair => pair.Key, pair => pair.Value.First().ResourceToken);
+                }
+            }
+
+            public void Dispose()
+            {
+                // Do nothing
+            }
+
+            public ValueTask<(string token, IDisposableBytes payload)> GetUserAuthorizationAsync(
+                string resourceAddress,
+                string resourceType,
+                string requestVerb,
+                INameValueCollection headers,
+                AuthorizationTokenType tokenType)
+            {
+                PartitionKeyInternal partitionKey = PartitionKeyInternal.Empty;
+                string partitionKeyString = headers[HttpConstants.HttpHeaders.PartitionKey];
+                if (partitionKeyString != null)
+                {
+                    partitionKey = PartitionKeyInternal.FromJsonString(partitionKeyString);
+                }
+
+                if (PathsHelper.IsNameBased(resourceAddress))
+                {
+                    string resourceToken = null;
+                    bool isTokenAvailable = false;
+
+                    for (int index = 2; index < ResourceId.MaxPathFragment; index = index + 2)
+                    {
+                        string resourceParent = PathsHelper.GetParentByIndex(resourceAddress, index);
+                        if (resourceParent == null)
+                            break;
+
+                        isTokenAvailable = this.TryGetResourceToken(resourceParent, partitionKey, out resourceToken);
+                        if (isTokenAvailable)
+                            break;
+                    }
+
+                    // Get or Head for collection can be done with any child token
+                    if (!isTokenAvailable && PathsHelper.GetCollectionPath(resourceAddress) == resourceAddress
+                        && (requestVerb == HttpConstants.HttpMethods.Get
+                            || requestVerb == HttpConstants.HttpMethods.Head))
+                    {
+                        string resourceAddressWithSlash = resourceAddress.EndsWith("/", StringComparison.Ordinal)
+                                                              ? resourceAddress
+                                                              : resourceAddress + "/";
+                        foreach (KeyValuePair<string, List<PartitionKeyAndResourceTokenPair>> pair in this.resourceTokens)
+                        {
+                            if (pair.Key.StartsWith(resourceAddressWithSlash, StringComparison.Ordinal))
+                            {
+                                resourceToken = pair.Value[0].ResourceToken;
+                                isTokenAvailable = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!isTokenAvailable)
+                    {
+                        throw new UnauthorizedException(string.Format(
+                           CultureInfo.InvariantCulture, ClientResources.AuthTokenNotFound, resourceAddress));
+                    }
+
+                    return new ValueTask<(string, IDisposableBytes)>((HttpUtility.UrlEncode(resourceToken), null));
+                }
+                else
+                {
+                    string resourceToken = null;
+
+                    // In case there is no directly matching token, look for parent's token.
+                    ResourceId resourceId = ResourceId.Parse(resourceAddress);
+
+                    bool isTokenAvailable = false;
+                    if (resourceId.Attachment != 0 || resourceId.Permission != 0 || resourceId.StoredProcedure != 0
+                        || resourceId.Trigger != 0 || resourceId.UserDefinedFunction != 0)
+                    {
+                        // Use the leaf ID - attachment/permission/sproc/trigger/udf
+                        isTokenAvailable = this.TryGetResourceToken(resourceAddress, partitionKey, out resourceToken);
+                    }
+
+                    if (!isTokenAvailable &&
+                        (resourceId.Attachment != 0 || resourceId.Document != 0))
+                    {
+                        // Use DocumentID for attachment/document
+                        isTokenAvailable = this.TryGetResourceToken(resourceId.DocumentId.ToString(), partitionKey, out resourceToken);
+                    }
+
+                    if (!isTokenAvailable &&
+                        (resourceId.Attachment != 0 || resourceId.Document != 0 || resourceId.StoredProcedure != 0 || resourceId.Trigger != 0
+                        || resourceId.UserDefinedFunction != 0 || resourceId.DocumentCollection != 0))
+                    {
+                        // Use CollectionID for attachment/document/sproc/trigger/udf/collection
+                        isTokenAvailable = this.TryGetResourceToken(resourceId.DocumentCollectionId.ToString(), partitionKey, out resourceToken);
+                    }
+
+                    if (!isTokenAvailable &&
+                        (resourceId.Permission != 0 || resourceId.User != 0))
+                    {
+                        // Use UserID for permission/user
+                        isTokenAvailable = this.TryGetResourceToken(resourceId.UserId.ToString(), partitionKey, out resourceToken);
+                    }
+
+                    if (!isTokenAvailable)
+                    {
+                        // Use DatabaseId if all else fail
+                        isTokenAvailable = this.TryGetResourceToken(resourceId.DatabaseId.ToString(), partitionKey, out resourceToken);
+                    }
+
+                    // Get or Head for collection can be done with any child token
+                    if (!isTokenAvailable && resourceId.DocumentCollection != 0
+                        && (requestVerb == HttpConstants.HttpMethods.Get
+                            || requestVerb == HttpConstants.HttpMethods.Head))
+                    {
+                        foreach (KeyValuePair<string, List<PartitionKeyAndResourceTokenPair>> pair in this.resourceTokens)
+                        {
+                            ResourceId tokenRid;
+                            if (!PathsHelper.IsNameBased(pair.Key) &&
+                                ResourceId.TryParse(pair.Key, out tokenRid) &&
+                                tokenRid.DocumentCollectionId.Equals(resourceId))
+                            {
+                                resourceToken = pair.Value[0].ResourceToken;
+                                isTokenAvailable = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!isTokenAvailable)
+                    {
+                        throw new UnauthorizedException(string.Format(
+                            CultureInfo.InvariantCulture, ClientResources.AuthTokenNotFound, resourceAddress));
+                    }
+
+                    return new ValueTask<(string, IDisposableBytes)>((HttpUtility.UrlEncode(resourceToken), null));
+                }
+            }
+
+            private bool TryGetResourceToken(string resourceAddress, PartitionKeyInternal partitionKey, out string resourceToken)
+            {
+                resourceToken = null;
+                List<PartitionKeyAndResourceTokenPair> partitionKeyTokenPairs;
+                bool isPartitionKeyAndTokenPairListAvailable = this.resourceTokens.TryGetValue(resourceAddress, out partitionKeyTokenPairs);
+                if (isPartitionKeyAndTokenPairListAvailable)
+                {
+                    PartitionKeyAndResourceTokenPair partitionKeyTokenPair = partitionKeyTokenPairs.FirstOrDefault(pair => pair.PartitionKey.Contains(partitionKey));
+                    if (partitionKeyTokenPair != null)
+                    {
+                        resourceToken = partitionKeyTokenPair.ResourceToken;
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+        }
     }
 }

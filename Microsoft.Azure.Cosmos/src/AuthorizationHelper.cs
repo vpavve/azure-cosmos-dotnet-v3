@@ -9,8 +9,10 @@ namespace Microsoft.Azure.Cosmos
     using System.Diagnostics.CodeAnalysis;
     using System.Globalization;
     using System.IO;
+    using System.Runtime.CompilerServices;
     using System.Security.Cryptography;
     using System.Text;
+    using System.Threading.Tasks;
     using Microsoft.Azure.Cosmos.Core.Trace;
     using Microsoft.Azure.Documents;
     using Microsoft.Azure.Documents.Collections;
@@ -51,6 +53,49 @@ namespace Microsoft.Azure.Cosmos
             }
 
             return GenerateKeyAuthorizationSignature(verb, uri, headers, stringHMACSHA256Helper, clientVersion);
+        }
+
+        // This API is a helper method to create auth header based on client request.
+        // Uri is split into resourceType/resourceId - 
+        // For feed/post/put requests, resourceId = parentId,
+        // For point get requests,     resourceId = last segment in URI
+        public static ValueTask<(string token, IDisposableBytes payload)> GenerateKeyAuthorizationSignature(string verb,
+               Uri uri,
+               INameValueCollection headers,
+               IAuthorizationTokenProvider authorizationTokenProvider)
+        {
+            if (string.IsNullOrEmpty(verb))
+            {
+                throw new ArgumentException(RMResources.StringArgumentNullOrEmpty, nameof(verb));
+            }
+
+            if (uri == null)
+            {
+                throw new ArgumentNullException(nameof(uri));
+            }
+
+            if (authorizationTokenProvider == null)
+            {
+                throw new ArgumentNullException(nameof(authorizationTokenProvider));
+            }
+
+            if (headers == null)
+            {
+                throw new ArgumentNullException(nameof(headers));
+            }
+
+            string resourceType = string.Empty;
+            string resourceIdValue = string.Empty;
+            bool isNameBased = false;
+
+            AuthorizationHelper.GetResourceTypeAndIdOrFullName(uri, out isNameBased, out resourceType, out resourceIdValue, "");
+
+            return authorizationTokenProvider.GetUserAuthorizationAsync(
+                                         resourceIdValue,
+                                         resourceType,
+                                         verb,
+                                         headers,
+                                         AuthorizationTokenType.PrimaryMasterKey);
         }
 
         // This API is a helper method to create auth header based on client request.

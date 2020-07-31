@@ -11,50 +11,37 @@ namespace Microsoft.Azure.Cosmos
     using Microsoft.Azure.Cosmos.Routing;
     using Microsoft.Azure.Documents;
     using Microsoft.Azure.Documents.Collections;
+    using static Microsoft.Azure.Documents.IAuthorizationTokenProvider;
 
     internal sealed class GatewayAccountReader
     {
         private readonly ConnectionPolicy connectionPolicy;
-        private readonly IComputeHash authKeyHashFunction;
-        private readonly bool hasAuthKeyResourceToken = false;
-        private readonly string authKeyResourceToken = string.Empty;
+        private readonly IAuthorizationTokenProvider authorizationTokenProvider;
         private readonly HttpClient httpClient;
         private readonly Uri serviceEndpoint;
 
         public GatewayAccountReader(Uri serviceEndpoint,
-                IComputeHash stringHMACSHA256Helper,
-                bool hasResourceToken,
-                string resourceToken,
+                IAuthorizationTokenProvider authorizationTokenProvider,
                 ConnectionPolicy connectionPolicy,
                 HttpClient httpClient)
         {
             this.httpClient = httpClient;
             this.serviceEndpoint = serviceEndpoint;
-            this.authKeyHashFunction = stringHMACSHA256Helper;
-            this.hasAuthKeyResourceToken = hasResourceToken;
-            this.authKeyResourceToken = resourceToken;
+            this.authorizationTokenProvider = authorizationTokenProvider;
             this.connectionPolicy = connectionPolicy;
         }
 
         private async Task<AccountProperties> GetDatabaseAccountAsync(Uri serviceEndpoint)
         {
             INameValueCollection headers = new DictionaryNameValueCollection(StringComparer.Ordinal);
-            string authorizationToken = string.Empty;
-            if (this.hasAuthKeyResourceToken)
-            {
-                authorizationToken = HttpUtility.UrlEncode(this.authKeyResourceToken);
-            }
-            else
-            {
-                // Retrieve the document service properties.
-                string xDate = DateTime.UtcNow.ToString("r", CultureInfo.InvariantCulture);
-                headers.Set(HttpConstants.HttpHeaders.XDate, xDate);
-
-                authorizationToken = AuthorizationHelper.GenerateKeyAuthorizationSignature(
+            (string authorizationToken, IDisposableBytes payload) = await AuthorizationHelper.GenerateKeyAuthorizationSignature(
                     HttpConstants.HttpMethods.Get,
                     serviceEndpoint,
                     headers,
-                    this.authKeyHashFunction);
+                    this.authorizationTokenProvider);
+            using (payload)
+            {
+
             }
 
             headers.Set(HttpConstants.HttpHeaders.Authorization, authorizationToken);
