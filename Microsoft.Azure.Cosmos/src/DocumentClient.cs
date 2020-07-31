@@ -6499,6 +6499,9 @@ namespace Microsoft.Azure.Cosmos
                 using (HttpRequestMessage request = new HttpRequestMessage())
                 {
                     INameValueCollection headersCollection = new DictionaryNameValueCollection();
+                    string xDate = DateTime.UtcNow.ToString("r");
+                    headersCollection.Add(HttpConstants.HttpHeaders.XDate, xDate);
+                    request.Headers.Add(HttpConstants.HttpHeaders.XDate, xDate);
 
                     // Retrieve the CosmosAccountSettings from the gateway.
                     (string authorizationToken, IDisposableBytes payload) = await AuthorizationHelper.GenerateKeyAuthorizationSignature(
