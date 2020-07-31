@@ -1566,8 +1566,7 @@ namespace Microsoft.Azure.Cosmos
                 request.ResourceAddress,
                 PathsHelper.GetResourcePath(request.ResourceType),
                 verb,
-                request.Headers,
-                AuthorizationTokenType.PrimaryMasterKey);
+                request.Headers);
 
             // Unit-test hook
             if (testAuthorization != null)

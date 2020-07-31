@@ -92,8 +92,7 @@ namespace Microsoft.Azure.Documents
                         barrierLsnRequest.ResourceAddress,
                         isCollectionHeadRequest ? PathsHelper.GetResourcePath(ResourceType.Collection) : PathsHelper.GetResourcePath(ResourceType.Database),
                         HttpConstants.HttpMethods.Head,
-                        barrierLsnRequest.Headers,
-                        originalRequestTokenType);
+                        barrierLsnRequest.Headers);
                     using (dianosticContext)
                     {
                         barrierLsnRequest.Headers[HttpConstants.HttpHeaders.Authorization] = authorizationToken;

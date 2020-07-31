@@ -16,8 +16,7 @@ namespace Microsoft.Azure.Documents
             string resourceAddress,
             string resourceType,
             string requestVerb,
-            INameValueCollection headers,
-            AuthorizationTokenType tokenType);
+            INameValueCollection headers);
 
 #if !COSMOSCLIENT
         Task AddSystemAuthorizationHeaderAsync(

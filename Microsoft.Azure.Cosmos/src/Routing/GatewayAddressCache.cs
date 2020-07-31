@@ -425,8 +425,7 @@ namespace Microsoft.Azure.Cosmos.Routing
                 resourceAddress,
                 resourceTypeToSign,
                 HttpConstants.HttpMethods.Get,
-                headers,
-                AuthorizationTokenType.PrimaryMasterKey);
+                headers);
             using (dianosticContext)
             {
             }
@@ -482,8 +481,7 @@ namespace Microsoft.Azure.Cosmos.Routing
                     collectionRid,
                     resourceTypeToSign,
                     HttpConstants.HttpMethods.Get,
-                    headers,
-                    AuthorizationTokenType.PrimaryMasterKey);
+                    headers);
 
                 using (diagnosticContext)
                 {
@@ -502,8 +500,7 @@ namespace Microsoft.Azure.Cosmos.Routing
                         collectionAltLink,
                         resourceTypeToSign,
                         HttpConstants.HttpMethods.Get,
-                        headers,
-                        AuthorizationTokenType.PrimaryMasterKey);
+                        headers);
 
                 using (diagnosticContext)
                 {
