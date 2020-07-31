@@ -22,13 +22,12 @@ namespace Microsoft.Azure.Cosmos.Performance.Tests
     using System.IO;
     using static Microsoft.Azure.Documents.IAuthorizationTokenProvider;
 
-    internal class MockDocumentClient : DocumentClient, IAuthorizationTokenProvider
+    internal class MockDocumentClient : DocumentClient
     {
         Mock<ClientCollectionCache> collectionCache;
         Mock<PartitionKeyRangeCache> partitionKeyRangeCache;
         Mock<GlobalEndpointManager> globalEndpointManager;
         string[] dummyHeaderNames;
-        private IComputeHash authKeyHashFunction;
 
         public static CosmosClient CreateMockCosmosClient(
             bool useCustomSerializer = false,
@@ -64,7 +63,7 @@ namespace Microsoft.Azure.Cosmos.Performance.Tests
         public MockDocumentClient()
             : base(new Uri("http://localhost"), null)
         {
-            this.authKeyHashFunction = new StringHMACSHA256Hash(MockDocumentClient.GenerateRandomKey());
+            this.authorizationTokenProvider = new MasterKeyAuthTokenProvider(MockDocumentClient.GenerateRandomKey());
 
             this.Init();
         }
@@ -97,21 +96,6 @@ namespace Microsoft.Azure.Cosmos.Performance.Tests
         internal override Task<PartitionKeyRangeCache> GetPartitionKeyRangeCacheAsync()
         {
             return Task.FromResult(this.partitionKeyRangeCache.Object);
-        }
-
-        ValueTask<(string token, IDisposableBytes payload)> IAuthorizationTokenProvider.GetUserAuthorizationAsync(
-            string resourceAddress,
-            string resourceType,
-            string requestVerb,
-            INameValueCollection headers)
-        {
-            // this is masterkey authZ
-            headers[HttpConstants.HttpHeaders.XDate] = DateTime.UtcNow.ToString("r", CultureInfo.InvariantCulture);
-
-            (string token, IDisposableBytes diagnosticsContext) = AuthorizationHelper.GenerateKeyAuthorizationSignature(
-                    requestVerb, resourceAddress, resourceType, headers, this.authKeyHashFunction);
-
-            return new ValueTask<(string token, IDisposableBytes payload)>((token, diagnosticsContext));
         }
 
         private void Init()

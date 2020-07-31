@@ -94,8 +94,7 @@ namespace Microsoft.Azure.Cosmos
                                          resourceIdValue,
                                          resourceType,
                                          verb,
-                                         headers,
-                                         AuthorizationTokenType.PrimaryMasterKey);
+                                         headers);
         }
 
         // This API is a helper method to create auth header based on client request.

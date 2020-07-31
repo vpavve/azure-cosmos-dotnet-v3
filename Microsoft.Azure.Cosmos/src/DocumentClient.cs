@@ -130,7 +130,8 @@ namespace Microsoft.Azure.Cosmos
         private int rntbdSendHangDetectionTimeSeconds = DefaultRntbdSendHangDetectionTimeSeconds;
         private bool enableCpuMonitor = DefaultEnableCpuMonitor;
         private bool enableAuthFailureTraces = EnableAuthFailureTraces;
-        private IAuthorizationTokenProvider authorizationTokenProvider;
+
+        protected IAuthorizationTokenProvider authorizationTokenProvider;
 
         //Consistency
         private Documents.ConsistencyLevel? desiredConsistencyLevel;
@@ -7102,7 +7103,7 @@ namespace Microsoft.Azure.Cosmos
 
         #endregion
 
-        private class MasterKeyAuthTokenProvider : IAuthorizationTokenProvider
+        internal class MasterKeyAuthTokenProvider : IAuthorizationTokenProvider
         {
             //Auth
             private IComputeHash authKeyHashFunction;
@@ -7132,8 +7133,7 @@ namespace Microsoft.Azure.Cosmos
                 string resourceAddress,
                 string resourceType,
                 string requestVerb,
-                INameValueCollection headers,
-                AuthorizationTokenType tokenType)
+                INameValueCollection headers)
             {
                 // this is masterkey authZ
                 headers[HttpConstants.HttpHeaders.XDate] = DateTime.UtcNow.ToString("r", CultureInfo.InvariantCulture);
@@ -7145,7 +7145,7 @@ namespace Microsoft.Azure.Cosmos
             }
         }
 
-        private class BearerTokenProvider : IAuthorizationTokenProvider
+        internal class BearerTokenProvider : IAuthorizationTokenProvider
         {
             //Auth
             private string token;
@@ -7164,14 +7164,13 @@ namespace Microsoft.Azure.Cosmos
                 string resourceAddress,
                 string resourceType,
                 string requestVerb,
-                INameValueCollection headers,
-                AuthorizationTokenType tokenType)
+                INameValueCollection headers)
             {
                 return new ValueTask<(string, IDisposableBytes)>((this.token, null));
             }
         }
 
-        private class HierarchicalBearerTokenProvider : IAuthorizationTokenProvider
+        internal class HierarchicalBearerTokenProvider : IAuthorizationTokenProvider
         {
             //Auth
             private IDictionary<string, List<PartitionKeyAndResourceTokenPair>> resourceTokens;
@@ -7198,8 +7197,7 @@ namespace Microsoft.Azure.Cosmos
                 string resourceAddress,
                 string resourceType,
                 string requestVerb,
-                INameValueCollection headers,
-                AuthorizationTokenType tokenType)
+                INameValueCollection headers)
             {
                 PartitionKeyInternal partitionKey = PartitionKeyInternal.Empty;
                 string partitionKeyString = headers[HttpConstants.HttpHeaders.PartitionKey];
