@@ -20,8 +20,9 @@ namespace Microsoft.Azure.Cosmos.Performance.Tests
     using System.Collections.Generic;
     using Microsoft.CodeAnalysis.CSharp.Syntax;
     using System.IO;
+    using static Microsoft.Azure.Documents.IAuthorizationTokenProvider;
 
-    internal class MockDocumentClient : DocumentClient, ICosmosAuthorizationTokenProvider
+    internal class MockDocumentClient : DocumentClient, IAuthorizationTokenProvider
     {
         Mock<ClientCollectionCache> collectionCache;
         Mock<PartitionKeyRangeCache> partitionKeyRangeCache;
@@ -98,7 +99,7 @@ namespace Microsoft.Azure.Cosmos.Performance.Tests
             return Task.FromResult(this.partitionKeyRangeCache.Object);
         }
 
-        string ICosmosAuthorizationTokenProvider.GetUserAuthorizationToken(
+        ValueTask<(string token, IDisposableBytes payload)> IAuthorizationTokenProvider.GetUserAuthorizationAsync(
             string resourceAddress,
             string resourceType,
             string requestVerb,
@@ -108,12 +109,10 @@ namespace Microsoft.Azure.Cosmos.Performance.Tests
             // this is masterkey authZ
             headers[HttpConstants.HttpHeaders.XDate] = DateTime.UtcNow.ToString("r", CultureInfo.InvariantCulture);
 
-            string authorization = AuthorizationHelper.GenerateKeyAuthorizationSignature(
-                    requestVerb, resourceAddress, resourceType, headers, this.authKeyHashFunction, out AuthorizationHelper.ArrayOwner payload);
-            using (payload)
-            {
-                return authorization;
-            }
+            (string token, IDisposableBytes diagnosticsContext) = AuthorizationHelper.GenerateKeyAuthorizationSignature(
+                    requestVerb, resourceAddress, resourceType, headers, this.authKeyHashFunction);
+
+            return new ValueTask<(string token, IDisposableBytes payload)>((token, diagnosticsContext));
         }
 
         private void Init()
