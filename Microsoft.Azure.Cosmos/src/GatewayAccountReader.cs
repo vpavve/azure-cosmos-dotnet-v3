@@ -7,6 +7,7 @@ namespace Microsoft.Azure.Cosmos
     using System;
     using System.Globalization;
     using System.Net.Http;
+    using System.Runtime.CompilerServices;
     using System.Threading.Tasks;
     using Microsoft.Azure.Cosmos.Routing;
     using Microsoft.Azure.Documents;
@@ -17,15 +18,15 @@ namespace Microsoft.Azure.Cosmos
     {
         private readonly ConnectionPolicy connectionPolicy;
         private readonly IAuthorizationTokenProvider authorizationTokenProvider;
-        private readonly HttpClient httpClient;
+        private readonly GatewayStoreClient gatewayHttpClient;
         private readonly Uri serviceEndpoint;
 
         public GatewayAccountReader(Uri serviceEndpoint,
                 IAuthorizationTokenProvider authorizationTokenProvider,
                 ConnectionPolicy connectionPolicy,
-                HttpClient httpClient)
+                GatewayStoreClient gatewayStoreClient)
         {
-            this.httpClient = httpClient;
+            this.gatewayHttpClient = gatewayStoreClient;
             this.serviceEndpoint = serviceEndpoint;
             this.authorizationTokenProvider = authorizationTokenProvider;
             this.connectionPolicy = connectionPolicy;
@@ -45,13 +46,7 @@ namespace Microsoft.Azure.Cosmos
             }
 
             headers.Set(HttpConstants.HttpHeaders.Authorization, authorizationToken);
-            using (HttpResponseMessage responseMessage = await this.httpClient.GetAsync(serviceEndpoint, headers))
-            {
-                using (DocumentServiceResponse documentServiceResponse = await ClientExtensions.ParseResponseAsync(responseMessage))
-                {
-                    return CosmosResource.FromStream<AccountProperties>(documentServiceResponse);
-                }
-            }
+            return await this.gatewayHttpClient.GetDatabaseAccountAsync(serviceEndpoint, headers);
         }
 
         public async Task<AccountProperties> InitializeReaderAsync()

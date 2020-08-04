@@ -132,6 +132,7 @@ namespace Microsoft.Azure.Cosmos
         private bool enableAuthFailureTraces = EnableAuthFailureTraces;
 
         protected IAuthorizationTokenProvider authorizationTokenProvider;
+        private GatewayStoreClient gatewayStoreClient;
 
         //Consistency
         private Documents.ConsistencyLevel? desiredConsistencyLevel;
@@ -1141,6 +1142,7 @@ namespace Microsoft.Azure.Cosmos
         // Always called from under the lock except when called from Intilialize method during construction.
         private async Task GetInitializationTaskAsync(IStoreClientFactory storeClientFactory)
         {
+            this.gatewayStoreClient = new GatewayStoreClient(this.httpClient, this.eventSource, this.serializerSettings);
             await this.InitializeGatewayConfigurationReaderAsync();
 
             if (this.desiredConsistencyLevel.HasValue)
@@ -1152,9 +1154,7 @@ namespace Microsoft.Azure.Cosmos
                     this.GlobalEndpointManager,
                     this.sessionContainer,
                     (Cosmos.ConsistencyLevel)this.accountServiceConfiguration.DefaultConsistencyLevel,
-                    this.eventSource,
-                    this.serializerSettings,
-                    this.httpClient);
+                    this.gatewayStoreClient);
 
             this.GatewayStoreModel = gatewayStoreModel;
 
@@ -1462,6 +1462,12 @@ namespace Microsoft.Azure.Cosmos
             {
                 this.GlobalEndpointManager.Dispose();
                 this.GlobalEndpointManager = null;
+            }
+
+            if (this.gatewayStoreClient != null)
+            {
+                this.gatewayStoreClient.Dispose();
+                this.gatewayStoreClient = null;
             }
 
             DefaultTrace.TraceInformation("DocumentClient with id {0} disposed.", this.traceId);
@@ -6740,7 +6746,7 @@ namespace Microsoft.Azure.Cosmos
                     serviceEndpoint: this.ServiceEndpoint,
                     this.authorizationTokenProvider,
                     connectionPolicy: this.ConnectionPolicy,
-                    httpClient: this.httpClient);
+                    this.gatewayStoreClient);
 
             this.accountServiceConfiguration = new CosmosAccountServiceConfiguration(accountReader.InitializeReaderAsync);
 

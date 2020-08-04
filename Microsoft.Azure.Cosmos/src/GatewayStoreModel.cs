@@ -21,7 +21,6 @@ namespace Microsoft.Azure.Cosmos
     internal class GatewayStoreModel : IStoreModel, IDisposable
     {
         private readonly GlobalEndpointManager endpointManager;
-        private readonly DocumentClientEventSource eventSource;
         private readonly ISessionContainer sessionContainer;
         private readonly ConsistencyLevel defaultConsistencyLevel;
 
@@ -31,19 +30,13 @@ namespace Microsoft.Azure.Cosmos
             GlobalEndpointManager endpointManager,
             ISessionContainer sessionContainer,
             ConsistencyLevel defaultConsistencyLevel,
-            DocumentClientEventSource eventSource,
-            JsonSerializerSettings serializerSettings,
-            HttpClient httpClient)
+            GatewayStoreClient gatewayStoreClient)
         {
             this.endpointManager = endpointManager;
             this.sessionContainer = sessionContainer;
             this.defaultConsistencyLevel = defaultConsistencyLevel;
-            this.eventSource = eventSource;
 
-            this.gatewayStoreClient = new GatewayStoreClient(
-                httpClient,
-                this.eventSource,
-                serializerSettings);
+            this.gatewayStoreClient = gatewayStoreClient;
         }
 
         public virtual async Task<DocumentServiceResponse> ProcessMessageAsync(DocumentServiceRequest request, CancellationToken cancellationToken = default(CancellationToken))

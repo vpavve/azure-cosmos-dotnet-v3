@@ -18,6 +18,7 @@ namespace Microsoft.Azure.Cosmos
     using Microsoft.Azure.Documents;
     using Microsoft.Azure.Documents.Collections;
     using Newtonsoft.Json;
+    using static Microsoft.Azure.Documents.IAuthorizationTokenProvider;
 
     internal class GatewayStoreClient : TransportClient
     {
@@ -34,6 +35,17 @@ namespace Microsoft.Azure.Cosmos
             this.httpClient = httpClient;
             this.SerializerSettings = serializerSettings;
             this.eventSource = eventSource;
+        }
+
+        public async Task<AccountProperties> GetDatabaseAccountAsync(Uri serviceEndpoint, INameValueCollection headers)
+        {
+            using (HttpResponseMessage responseMessage = await this.httpClient.GetAsync(serviceEndpoint, headers))
+            {
+                using (DocumentServiceResponse documentServiceResponse = await ClientExtensions.ParseResponseAsync(responseMessage))
+                {
+                    return CosmosResource.FromStream<AccountProperties>(documentServiceResponse);
+                }
+            }
         }
 
         public async Task<DocumentServiceResponse> InvokeAsync(
