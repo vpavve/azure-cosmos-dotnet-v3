@@ -12,7 +12,7 @@ namespace Microsoft.Azure.Documents
         /// <summary>
         /// Generates a Authorization Token for a given resource type, address and action.
         /// </summary>
-        ValueTask<(string token, IDisposableBytes payload)> GetUserAuthorizationAsync(
+        ValueTask<IDisposableBytes> AuthorizeAsync(
             string resourceAddress,
             string resourceType,
             string requestVerb,

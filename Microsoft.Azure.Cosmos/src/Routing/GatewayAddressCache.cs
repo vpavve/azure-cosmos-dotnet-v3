@@ -420,8 +420,7 @@ namespace Microsoft.Azure.Cosmos.Routing
 
             string resourceTypeToSign = PathsHelper.GetResourcePath(resourceType);
 
-            headers.Set(HttpConstants.HttpHeaders.XDate, DateTime.UtcNow.ToString("r", CultureInfo.InvariantCulture));
-            (string token, IDisposableBytes dianosticContext) = await this.tokenProvider.GetUserAuthorizationAsync(
+            IDisposableBytes dianosticContext = await this.tokenProvider.AuthorizeAsync(
                 resourceAddress,
                 resourceTypeToSign,
                 HttpConstants.HttpMethods.Get,
@@ -429,8 +428,6 @@ namespace Microsoft.Azure.Cosmos.Routing
             using (dianosticContext)
             {
             }
-
-            headers.Set(HttpConstants.HttpHeaders.Authorization, token);
 
             Uri targetEndpoint = UrlUtility.SetQuery(this.addressEndpoint, UrlUtility.CreateQuery(addressQuery));
 
@@ -468,11 +465,9 @@ namespace Microsoft.Azure.Cosmos.Routing
 
             string resourceTypeToSign = PathsHelper.GetResourcePath(ResourceType.Document);
 
-            headers.Set(HttpConstants.HttpHeaders.XDate, DateTime.UtcNow.ToString("r", CultureInfo.InvariantCulture));
-            string token = null;
             try
             {
-                (string authorizationToken, IDisposableBytes diagnosticContext) = await this.tokenProvider.GetUserAuthorizationAsync(
+                IDisposableBytes diagnosticContext = await this.tokenProvider.AuthorizeAsync(
                     collectionRid,
                     resourceTypeToSign,
                     HttpConstants.HttpMethods.Get,
@@ -480,18 +475,17 @@ namespace Microsoft.Azure.Cosmos.Routing
 
                 using (diagnosticContext)
                 {
-                    token = authorizationToken;
                 }
             }
             catch (UnauthorizedException)
             {
             }
 
-            if (token == null && request != null && request.IsNameBased)
+            if (headers.Get(HttpConstants.HttpHeaders.Authorization) == null && request != null && request.IsNameBased)
             {
                 // User doesn't have rid based resource token. Maybe he has name based.
                 string collectionAltLink = PathsHelper.GetCollectionPath(request.ResourceAddress);
-                (string authorizationToken, IDisposableBytes diagnosticContext) = await this.tokenProvider.GetUserAuthorizationAsync(
+                IDisposableBytes diagnosticContext = await this.tokenProvider.AuthorizeAsync(
                         collectionAltLink,
                         resourceTypeToSign,
                         HttpConstants.HttpMethods.Get,
@@ -499,11 +493,8 @@ namespace Microsoft.Azure.Cosmos.Routing
 
                 using (diagnosticContext)
                 {
-                    token = authorizationToken;
                 }
             }
-
-            headers.Set(HttpConstants.HttpHeaders.Authorization, token);
 
             Uri targetEndpoint = UrlUtility.SetQuery(this.addressEndpoint, UrlUtility.CreateQuery(addressQuery));
 

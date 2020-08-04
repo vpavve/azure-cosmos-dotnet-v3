@@ -226,7 +226,7 @@ namespace Microsoft.Azure.Cosmos.Routing
                 try
                 {
                     (string token, IDisposableBytes diagnosticContext) =
-                        await this.authorizationTokenProvider.GetUserAuthorizationAsync(
+                        await this.authorizationTokenProvider.AuthorizeAsync(
                     request.ResourceAddress,
                     PathsHelper.GetResourcePath(request.ResourceType),
                     HttpConstants.HttpMethods.Get,

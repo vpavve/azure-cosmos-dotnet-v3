@@ -35,7 +35,7 @@ namespace Microsoft.Azure.Cosmos
         private async Task<AccountProperties> GetDatabaseAccountAsync(Uri serviceEndpoint)
         {
             INameValueCollection headers = new DictionaryNameValueCollection(StringComparer.Ordinal);
-            (string authorizationToken, IDisposableBytes payload) = await AuthorizationHelper.GenerateKeyAuthorizationSignature(
+            IDisposableBytes payload = await AuthorizationHelper.GenerateKeyAuthorizationSignature(
                     HttpConstants.HttpMethods.Get,
                     serviceEndpoint,
                     headers,
@@ -45,7 +45,6 @@ namespace Microsoft.Azure.Cosmos
 
             }
 
-            headers.Set(HttpConstants.HttpHeaders.Authorization, authorizationToken);
             return await this.gatewayHttpClient.GetAccountAsync(serviceEndpoint, headers);
         }
 

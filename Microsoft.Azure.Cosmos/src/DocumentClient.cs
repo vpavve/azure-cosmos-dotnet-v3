@@ -1569,7 +1569,7 @@ namespace Microsoft.Azure.Cosmos
                 throw new ArgumentNullException(nameof(verb));
             }
 
-            (string authorization, IDisposableBytes authDiagnosticsContext) = await this.authorizationTokenProvider.GetUserAuthorizationAsync(
+            IDisposableBytes authDiagnosticsContext = await this.authorizationTokenProvider.AuthorizeAsync(
                 request.ResourceAddress,
                 PathsHelper.GetResourcePath(request.ResourceType),
                 verb,
@@ -1579,9 +1579,7 @@ namespace Microsoft.Azure.Cosmos
             if (testAuthorization != null)
             {
                 authDiagnosticsContext = testAuthorization;
-                authorization = testAuthorization.GetDiagnosticsPayload();
             }
-            request.Headers[HttpConstants.HttpHeaders.Authorization] = authorization;
 
             using (authDiagnosticsContext)
             {
@@ -1604,6 +1602,7 @@ namespace Microsoft.Azure.Cosmos
                         string normalizedPayload = authDiagnosticsContext.GetDiagnosticsPayload();
                         if (this.enableAuthFailureTraces)
                         {
+                            string authorization = request.Headers.Get(HttpConstants.HttpHeaders.Authorization);
                             string tokenFirst5 = HttpUtility.UrlDecode(authorization).Split('&')[2].Split('=')[1].Substring(0, 5);
                             ulong authHash = 0;
                             if (this.authorizationTokenProvider is MasterKeyAuthTokenProvider masterKeyAuth)
@@ -6505,7 +6504,7 @@ namespace Microsoft.Azure.Cosmos
             headersCollection.Add(HttpConstants.HttpHeaders.XDate, xDate);
 
             // Retrieve the CosmosAccountSettings from the gateway.
-            (string authorizationToken, IDisposableBytes payload) = await AuthorizationHelper.GenerateKeyAuthorizationSignature(
+            IDisposableBytes payload = await AuthorizationHelper.GenerateKeyAuthorizationSignature(
                     HttpConstants.HttpMethods.Get,
                     serviceEndpoint,
                     headersCollection,
@@ -6513,8 +6512,6 @@ namespace Microsoft.Azure.Cosmos
             using (payload)
             {
             }
-
-            headersCollection.Add(HttpConstants.HttpHeaders.Authorization, authorizationToken);
 
             AccountProperties databaseAccount = await this.gatewayStoreClient.GetAccountAsync(serviceEndpoint, headersCollection, cancellationToken);
 
@@ -7124,7 +7121,7 @@ namespace Microsoft.Azure.Cosmos
                 }
             }
 
-            public ValueTask<(string token, IDisposableBytes payload)> GetUserAuthorizationAsync(
+            public ValueTask<IDisposableBytes> AuthorizeAsync(
                 string resourceAddress,
                 string resourceType,
                 string requestVerb,
@@ -7136,7 +7133,8 @@ namespace Microsoft.Azure.Cosmos
                 (string token, IDisposableBytes diagnosticContext) = AuthorizationHelper.GenerateKeyAuthorizationSignature(
                         requestVerb, resourceAddress, resourceType, headers, this.authKeyHashFunction);
 
-                return new ValueTask<(string, IDisposableBytes)>((token, diagnosticContext));
+                headers[HttpConstants.HttpHeaders.Authorization] = token;
+                return new ValueTask<IDisposableBytes>(diagnosticContext);
             }
         }
 
@@ -7155,13 +7153,14 @@ namespace Microsoft.Azure.Cosmos
                 // Do nothing
             }
 
-            public ValueTask<(string token, IDisposableBytes payload)> GetUserAuthorizationAsync(
+            public ValueTask<IDisposableBytes> AuthorizeAsync(
                 string resourceAddress,
                 string resourceType,
                 string requestVerb,
                 INameValueCollection headers)
             {
-                return new ValueTask<(string, IDisposableBytes)>((this.token, null));
+                headers[HttpConstants.HttpHeaders.Authorization] = this.token;
+                return new ValueTask<IDisposableBytes>((IDisposableBytes)null);
             }
         }
 
@@ -7188,7 +7187,7 @@ namespace Microsoft.Azure.Cosmos
                 // Do nothing
             }
 
-            public ValueTask<(string token, IDisposableBytes payload)> GetUserAuthorizationAsync(
+            public ValueTask<IDisposableBytes> AuthorizeAsync(
                 string resourceAddress,
                 string resourceType,
                 string requestVerb,
@@ -7242,7 +7241,7 @@ namespace Microsoft.Azure.Cosmos
                            CultureInfo.InvariantCulture, ClientResources.AuthTokenNotFound, resourceAddress));
                     }
 
-                    return new ValueTask<(string, IDisposableBytes)>((HttpUtility.UrlEncode(resourceToken), null));
+                    return new ValueTask<IDisposableBytes>((IDisposableBytes)null);
                 }
                 else
                 {
@@ -7312,7 +7311,8 @@ namespace Microsoft.Azure.Cosmos
                             CultureInfo.InvariantCulture, ClientResources.AuthTokenNotFound, resourceAddress));
                     }
 
-                    return new ValueTask<(string, IDisposableBytes)>((HttpUtility.UrlEncode(resourceToken), null));
+                    headers[HttpConstants.HttpHeaders.Authorization] = HttpUtility.UrlEncode(resourceToken);
+                    return new ValueTask<IDisposableBytes>((IDisposableBytes)null);
                 }
             }
 

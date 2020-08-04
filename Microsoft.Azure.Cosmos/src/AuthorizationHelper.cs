@@ -59,7 +59,7 @@ namespace Microsoft.Azure.Cosmos
         // Uri is split into resourceType/resourceId - 
         // For feed/post/put requests, resourceId = parentId,
         // For point get requests,     resourceId = last segment in URI
-        public static ValueTask<(string token, IDisposableBytes payload)> GenerateKeyAuthorizationSignature(string verb,
+        public static ValueTask<IDisposableBytes> GenerateKeyAuthorizationSignature(string verb,
                Uri uri,
                INameValueCollection headers,
                IAuthorizationTokenProvider authorizationTokenProvider)
@@ -90,7 +90,7 @@ namespace Microsoft.Azure.Cosmos
 
             AuthorizationHelper.GetResourceTypeAndIdOrFullName(uri, out isNameBased, out resourceType, out resourceIdValue, "");
 
-            return authorizationTokenProvider.GetUserAuthorizationAsync(
+            return authorizationTokenProvider.AuthorizeAsync(
                                          resourceIdValue,
                                          resourceType,
                                          verb,
