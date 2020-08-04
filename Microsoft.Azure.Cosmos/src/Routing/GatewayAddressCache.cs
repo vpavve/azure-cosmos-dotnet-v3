@@ -435,7 +435,7 @@ namespace Microsoft.Azure.Cosmos.Routing
             Uri targetEndpoint = UrlUtility.SetQuery(this.addressEndpoint, UrlUtility.CreateQuery(addressQuery));
 
             string identifier = GatewayAddressCache.LogAddressResolutionStart(request, targetEndpoint);
-            FeedResource<Address> addressFeedResponse = await this.gatewayStoreClient.GetAsync<FeedResource<Address>>(targetEndpoint, headers);
+            FeedResource<Address> addressFeedResponse = await this.gatewayStoreClient.GetResourceAsync<FeedResource<Address>>(targetEndpoint, headers);
             GatewayAddressCache.LogAddressResolutionEnd(request, identifier);
 
             return addressFeedResponse;
@@ -508,7 +508,7 @@ namespace Microsoft.Azure.Cosmos.Routing
             Uri targetEndpoint = UrlUtility.SetQuery(this.addressEndpoint, UrlUtility.CreateQuery(addressQuery));
 
             string identifier = GatewayAddressCache.LogAddressResolutionStart(request, targetEndpoint);
-            FeedResource<Address> addressFeed = await this.gatewayStoreClient.GetAsync<FeedResource<Address>>(targetEndpoint, headers);
+            FeedResource<Address> addressFeed = await this.gatewayStoreClient.GetResourceAsync<FeedResource<Address>>(targetEndpoint, headers);
             GatewayAddressCache.LogAddressResolutionEnd(request, identifier);
 
             return addressFeed;

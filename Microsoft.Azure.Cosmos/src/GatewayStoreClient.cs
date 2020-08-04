@@ -48,6 +48,17 @@ namespace Microsoft.Azure.Cosmos
             }
         }
 
+        public async Task<T> GetResourceAsync<T>(Uri serviceEndpoint, INameValueCollection headers) where T : Microsoft.Azure.Documents.Resource, new()
+        {
+            using (HttpResponseMessage responseMessage = await this.httpClient.GetAsync(serviceEndpoint, headers))
+            {
+                using (DocumentServiceResponse documentServiceResponse = await ClientExtensions.ParseResponseAsync(responseMessage))
+                {
+                    return documentServiceResponse.GetResource<T>();
+                }
+            }
+        }
+
         public async Task<DocumentServiceResponse> InvokeAsync(
            DocumentServiceRequest request,
            ResourceType resourceType,
