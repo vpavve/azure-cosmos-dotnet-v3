@@ -222,10 +222,9 @@ namespace Microsoft.Azure.Cosmos.Routing
                 AuthorizationTokenType.PrimaryMasterKey,
                 headers))
             {
-                string authorizationToken = null;
                 try
                 {
-                    (string token, IDisposableBytes diagnosticContext) =
+                    IDisposableBytes diagnosticContext =
                         await this.authorizationTokenProvider.AuthorizeAsync(
                     request.ResourceAddress,
                     PathsHelper.GetResourcePath(request.ResourceType),
@@ -234,14 +233,13 @@ namespace Microsoft.Azure.Cosmos.Routing
 
                     using (diagnosticContext)
                     {
-                        authorizationToken = token;
                     }
                 }
                 catch (UnauthorizedException)
                 {
                 }
 
-                if (authorizationToken == null)
+                if (request.Headers.Get(HttpConstants.HttpHeaders.Authorization) == null)
                 {
                     // User doesn't have rid based resource token. Maybe he has name based.
                     throw new NotSupportedException("Resoruce tokens are not supported");
@@ -255,8 +253,6 @@ namespace Microsoft.Azure.Cosmos.Routing
                     ////        request.Headers,
                     ////        AuthorizationTokenType.PrimaryMasterKey);
                 }
-
-                request.Headers[HttpConstants.HttpHeaders.Authorization] = authorizationToken;
 
                 using (new ActivityScope(Guid.NewGuid()))
                 {

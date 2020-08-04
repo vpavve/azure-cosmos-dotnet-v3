@@ -66,15 +66,12 @@ namespace Microsoft.Azure.Cosmos.Routing
                    AuthorizationTokenType.PrimaryMasterKey,
                    new DictionaryNameValueCollection()))
             {
-                request.Headers[HttpConstants.HttpHeaders.XDate] = DateTime.UtcNow.ToString("r");
-
-                (string authorizationToken, IDisposableBytes dianosticContext) = await this.tokenProvider.AuthorizeAsync(
+                IDisposableBytes dianosticContext = await this.tokenProvider.AuthorizeAsync(
                     request.ResourceAddress,
                     PathsHelper.GetResourcePath(request.ResourceType),
                     HttpConstants.HttpMethods.Get,
                     request.Headers);
 
-                request.Headers[HttpConstants.HttpHeaders.Authorization] = authorizationToken;
                 using (dianosticContext)
                 {
                 }

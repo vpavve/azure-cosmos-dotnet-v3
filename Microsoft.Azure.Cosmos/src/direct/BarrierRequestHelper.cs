@@ -88,14 +88,13 @@ namespace Microsoft.Azure.Documents
                 case AuthorizationTokenType.PrimaryReadonlyMasterKey:
                 case AuthorizationTokenType.SecondaryMasterKey:
                 case AuthorizationTokenType.SecondaryReadonlyMasterKey:
-                    (string authorizationToken, IDisposableBytes dianosticContext) = await authorizationTokenProvider.AuthorizeAsync(
+                    IDisposableBytes dianosticContext = await authorizationTokenProvider.AuthorizeAsync(
                         barrierLsnRequest.ResourceAddress,
                         isCollectionHeadRequest ? PathsHelper.GetResourcePath(ResourceType.Collection) : PathsHelper.GetResourcePath(ResourceType.Database),
                         HttpConstants.HttpMethods.Head,
                         barrierLsnRequest.Headers);
                     using (dianosticContext)
                     {
-                        barrierLsnRequest.Headers[HttpConstants.HttpHeaders.Authorization] = authorizationToken;
                     }
                     break;
 
