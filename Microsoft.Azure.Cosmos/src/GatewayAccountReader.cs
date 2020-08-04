@@ -46,7 +46,7 @@ namespace Microsoft.Azure.Cosmos
             }
 
             headers.Set(HttpConstants.HttpHeaders.Authorization, authorizationToken);
-            return await this.gatewayHttpClient.GetDatabaseAccountAsync(serviceEndpoint, headers);
+            return await this.gatewayHttpClient.GetAsync<AccountProperties>(serviceEndpoint, headers);
         }
 
         public async Task<AccountProperties> InitializeReaderAsync()

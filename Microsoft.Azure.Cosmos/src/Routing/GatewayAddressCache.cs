@@ -44,7 +44,7 @@ namespace Microsoft.Azure.Cosmos.Routing
         private readonly IAuthorizationTokenProvider tokenProvider;
         private readonly bool enableTcpConnectionEndpointRediscovery;
 
-        private HttpClient httpClient;
+        private GatewayStoreClient gatewayStoreClient;
 
         private Tuple<PartitionKeyRangeIdentity, PartitionAddressInformation> masterPartitionAddressCache;
         private DateTime suboptimalMasterPartitionTimestamp;
@@ -54,7 +54,7 @@ namespace Microsoft.Azure.Cosmos.Routing
             Protocol protocol,
             IAuthorizationTokenProvider tokenProvider,
             IServiceConfigurationReader serviceConfigReader,
-            HttpClient httpClient,
+            GatewayStoreClient gatewayStoreClient,
             long suboptimalPartitionForceRefreshIntervalInSeconds = 600,
             bool enableTcpConnectionEndpointRediscovery = false)
         {
@@ -71,7 +71,7 @@ namespace Microsoft.Azure.Cosmos.Routing
 
             this.suboptimalPartitionForceRefreshIntervalInSeconds = suboptimalPartitionForceRefreshIntervalInSeconds;
 
-            this.httpClient = httpClient;
+            this.gatewayStoreClient = gatewayStoreClient;
 
             this.protocolFilter =
                 string.Format(CultureInfo.InvariantCulture,
@@ -435,15 +435,10 @@ namespace Microsoft.Azure.Cosmos.Routing
             Uri targetEndpoint = UrlUtility.SetQuery(this.addressEndpoint, UrlUtility.CreateQuery(addressQuery));
 
             string identifier = GatewayAddressCache.LogAddressResolutionStart(request, targetEndpoint);
-            using (HttpResponseMessage httpResponseMessage = await this.httpClient.GetAsync(targetEndpoint, headers))
-            {
-                using (DocumentServiceResponse documentServiceResponse =
-                        await ClientExtensions.ParseResponseAsync(httpResponseMessage))
-                {
-                    GatewayAddressCache.LogAddressResolutionEnd(request, identifier);
-                    return documentServiceResponse.GetResource<FeedResource<Address>>();
-                }
-            }
+            FeedResource<Address> addressFeedResponse = await this.gatewayStoreClient.GetAsync<FeedResource<Address>>(targetEndpoint, headers);
+            GatewayAddressCache.LogAddressResolutionEnd(request, identifier);
+
+            return addressFeedResponse;
         }
 
         private async Task<FeedResource<Address>> GetServerAddressesViaGatewayAsync(
@@ -513,16 +508,10 @@ namespace Microsoft.Azure.Cosmos.Routing
             Uri targetEndpoint = UrlUtility.SetQuery(this.addressEndpoint, UrlUtility.CreateQuery(addressQuery));
 
             string identifier = GatewayAddressCache.LogAddressResolutionStart(request, targetEndpoint);
-            using (HttpResponseMessage httpResponseMessage = await this.httpClient.GetAsync(targetEndpoint, headers))
-            {
-                using (DocumentServiceResponse documentServiceResponse =
-                        await ClientExtensions.ParseResponseAsync(httpResponseMessage))
-                {
-                    GatewayAddressCache.LogAddressResolutionEnd(request, identifier);
+            FeedResource<Address> addressFeed = await this.gatewayStoreClient.GetAsync<FeedResource<Address>>(targetEndpoint, headers);
+            GatewayAddressCache.LogAddressResolutionEnd(request, identifier);
 
-                    return documentServiceResponse.GetResource<FeedResource<Address>>();
-                }
-            }
+            return addressFeed;
         }
 
         public void Dispose()

@@ -6661,7 +6661,7 @@ namespace Microsoft.Azure.Cosmos
                 this.partitionKeyRangeCache,
                 this.accountServiceConfiguration,
                 this.ConnectionPolicy,
-                this.httpClient);
+                this.gatewayStoreClient);
 
             // Check if we have a store client factory in input and if we do, do not initialize another store client
             // The purpose is to reuse store client factory across all document clients inside compute gateway

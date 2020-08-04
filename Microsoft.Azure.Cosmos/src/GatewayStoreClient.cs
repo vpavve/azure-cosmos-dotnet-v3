@@ -37,13 +37,13 @@ namespace Microsoft.Azure.Cosmos
             this.eventSource = eventSource;
         }
 
-        public async Task<AccountProperties> GetDatabaseAccountAsync(Uri serviceEndpoint, INameValueCollection headers)
+        public async Task<T> GetAsync<T>(Uri serviceEndpoint, INameValueCollection headers)
         {
             using (HttpResponseMessage responseMessage = await this.httpClient.GetAsync(serviceEndpoint, headers))
             {
                 using (DocumentServiceResponse documentServiceResponse = await ClientExtensions.ParseResponseAsync(responseMessage))
                 {
-                    return CosmosResource.FromStream<AccountProperties>(documentServiceResponse);
+                    return CosmosResource.FromStream<T>(documentServiceResponse);
                 }
             }
         }

@@ -31,7 +31,7 @@ namespace Microsoft.Azure.Cosmos.Routing
         private readonly PartitionKeyRangeCache routingMapProvider;
         private readonly int maxEndpoints;
         private readonly IServiceConfigurationReader serviceConfigReader;
-        private readonly HttpClient httpClient;
+        private readonly GatewayStoreClient gatewayStoreClient;
         private readonly ConcurrentDictionary<Uri, EndpointCache> addressCacheByEndpoint;
         private readonly bool enableTcpConnectionEndpointRediscovery;
 
@@ -43,7 +43,7 @@ namespace Microsoft.Azure.Cosmos.Routing
             PartitionKeyRangeCache routingMapProvider,
             IServiceConfigurationReader serviceConfigReader,
             ConnectionPolicy connectionPolicy,
-            HttpClient httpClient)
+            GatewayStoreClient gatewayStoreClient)
         {
             this.endpointManager = endpointManager;
             this.protocol = protocol;
@@ -51,7 +51,7 @@ namespace Microsoft.Azure.Cosmos.Routing
             this.collectionCache = collectionCache;
             this.routingMapProvider = routingMapProvider;
             this.serviceConfigReader = serviceConfigReader;
-            this.httpClient = httpClient;
+            this.gatewayStoreClient = gatewayStoreClient;
 
             int maxBackupReadEndpoints =
                 !connectionPolicy.EnableReadRequestsFallback.HasValue || connectionPolicy.EnableReadRequestsFallback.Value
@@ -181,7 +181,7 @@ namespace Microsoft.Azure.Cosmos.Routing
                         this.protocol,
                         this.tokenProvider,
                         this.serviceConfigReader,
-                        this.httpClient,
+                        this.gatewayStoreClient,
                         enableTcpConnectionEndpointRediscovery: this.enableTcpConnectionEndpointRediscovery);
 
                     string location = this.endpointManager.GetLocation(endpoint);
