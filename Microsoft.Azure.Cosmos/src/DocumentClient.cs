@@ -6499,39 +6499,28 @@ namespace Microsoft.Azure.Cosmos
         private async Task<AccountProperties> GetDatabaseAccountPrivateAsync(Uri serviceEndpoint, CancellationToken cancellationToken = default(CancellationToken))
         {
             await this.EnsureValidClientAsync();
-            GatewayStoreModel gatewayModel = this.GatewayStoreModel as GatewayStoreModel;
-            if (gatewayModel != null)
+
+            INameValueCollection headersCollection = new DictionaryNameValueCollection();
+            string xDate = DateTime.UtcNow.ToString("r");
+            headersCollection.Add(HttpConstants.HttpHeaders.XDate, xDate);
+
+            // Retrieve the CosmosAccountSettings from the gateway.
+            (string authorizationToken, IDisposableBytes payload) = await AuthorizationHelper.GenerateKeyAuthorizationSignature(
+                    HttpConstants.HttpMethods.Get,
+                    serviceEndpoint,
+                    headersCollection,
+                    this.authorizationTokenProvider);
+            using (payload)
             {
-                using (HttpRequestMessage request = new HttpRequestMessage())
-                {
-                    INameValueCollection headersCollection = new DictionaryNameValueCollection();
-                    string xDate = DateTime.UtcNow.ToString("r");
-                    headersCollection.Add(HttpConstants.HttpHeaders.XDate, xDate);
-                    request.Headers.Add(HttpConstants.HttpHeaders.XDate, xDate);
-
-                    // Retrieve the CosmosAccountSettings from the gateway.
-                    (string authorizationToken, IDisposableBytes payload) = await AuthorizationHelper.GenerateKeyAuthorizationSignature(
-                            HttpConstants.HttpMethods.Get,
-                            serviceEndpoint,
-                            headersCollection,
-                            this.authorizationTokenProvider);
-                    using (payload)
-                    {
-                    }
-
-                    request.Headers.Add(HttpConstants.HttpHeaders.Authorization, authorizationToken);
-                    request.Method = HttpMethod.Get;
-                    request.RequestUri = serviceEndpoint;
-
-                    AccountProperties databaseAccount = await gatewayModel.GetDatabaseAccountAsync(request);
-
-                    this.UseMultipleWriteLocations = this.ConnectionPolicy.UseMultipleWriteLocations && databaseAccount.EnableMultipleWriteLocations;
-
-                    return databaseAccount;
-                }
             }
 
-            return null;
+            headersCollection.Add(HttpConstants.HttpHeaders.Authorization, authorizationToken);
+
+            AccountProperties databaseAccount = await this.gatewayStoreClient.GetAccountAsync(serviceEndpoint, headersCollection, cancellationToken);
+
+            this.UseMultipleWriteLocations = this.ConnectionPolicy.UseMultipleWriteLocations && databaseAccount.EnableMultipleWriteLocations;
+
+            return databaseAccount;
         }
 
         #region Private Impl

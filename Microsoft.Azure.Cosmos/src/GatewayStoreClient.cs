@@ -20,6 +20,10 @@ namespace Microsoft.Azure.Cosmos
     using Newtonsoft.Json;
     using static Microsoft.Azure.Documents.IAuthorizationTokenProvider;
 
+    /// <summary>
+    /// TransportClient is pivoted on DocumentServiceReqeust (DSR).
+    /// DSR is primarily modeled for resources inside account but not for the account it-self.
+    /// </summary>
     internal class GatewayStoreClient : TransportClient
     {
         private readonly ICommunicationEventSource eventSource;
@@ -37,18 +41,70 @@ namespace Microsoft.Azure.Cosmos
             this.eventSource = eventSource;
         }
 
-        public async Task<T> GetAsync<T>(Uri serviceEndpoint, INameValueCollection headers)
+        public virtual async Task<AccountProperties> GetAccountAsync(
+            Uri serviceEndpoint,
+            INameValueCollection headers,
+            CancellationToken cancellationToken = default(CancellationToken))
         {
             using (HttpResponseMessage responseMessage = await this.httpClient.GetAsync(serviceEndpoint, headers))
             {
                 using (DocumentServiceResponse documentServiceResponse = await ClientExtensions.ParseResponseAsync(responseMessage))
                 {
-                    return CosmosResource.FromStream<T>(documentServiceResponse);
+                    AccountProperties databaseAccount =  CosmosResource.FromStream<AccountProperties>(documentServiceResponse);
+
+                    long longValue;
+                    IEnumerable<string> headerValues;
+                    if (responseMessage.Headers.TryGetValues(HttpConstants.HttpHeaders.MaxMediaStorageUsageInMB, out headerValues) &&
+                        (headerValues.Count() != 0))
+                    {
+                        if (long.TryParse(headerValues.First(), out longValue))
+                        {
+                            databaseAccount.MaxMediaStorageUsageInMB = longValue;
+                        }
+                    }
+
+                    if (responseMessage.Headers.TryGetValues(HttpConstants.HttpHeaders.CurrentMediaStorageUsageInMB, out headerValues) &&
+                        (headerValues.Count() != 0))
+                    {
+                        if (long.TryParse(headerValues.First(), out longValue))
+                        {
+                            databaseAccount.MediaStorageUsageInMB = longValue;
+                        }
+                    }
+
+                    if (responseMessage.Headers.TryGetValues(HttpConstants.HttpHeaders.DatabaseAccountConsumedDocumentStorageInMB, out headerValues) &&
+                       (headerValues.Count() != 0))
+                    {
+                        if (long.TryParse(headerValues.First(), out longValue))
+                        {
+                            databaseAccount.ConsumedDocumentStorageInMB = longValue;
+                        }
+                    }
+
+                    if (responseMessage.Headers.TryGetValues(HttpConstants.HttpHeaders.DatabaseAccountProvisionedDocumentStorageInMB, out headerValues) &&
+                       (headerValues.Count() != 0))
+                    {
+                        if (long.TryParse(headerValues.First(), out longValue))
+                        {
+                            databaseAccount.ProvisionedDocumentStorageInMB = longValue;
+                        }
+                    }
+
+                    if (responseMessage.Headers.TryGetValues(HttpConstants.HttpHeaders.DatabaseAccountReservedDocumentStorageInMB, out headerValues) &&
+                       (headerValues.Count() != 0))
+                    {
+                        if (long.TryParse(headerValues.First(), out longValue))
+                        {
+                            databaseAccount.ReservedDocumentStorageInMB = longValue;
+                        }
+                    }
+
+                    return databaseAccount;
                 }
             }
         }
 
-        public async Task<T> GetResourceAsync<T>(Uri serviceEndpoint, INameValueCollection headers) where T : Microsoft.Azure.Documents.Resource, new()
+        public async Task<T> GetAccountResourceAsync<T>(Uri serviceEndpoint, INameValueCollection headers) where T : Microsoft.Azure.Documents.Resource, new()
         {
             using (HttpResponseMessage responseMessage = await this.httpClient.GetAsync(serviceEndpoint, headers))
             {
@@ -92,12 +148,6 @@ namespace Microsoft.Azure.Cosmos
             {
                 return await HttpTransportClient.ProcessHttpResponse(request.ResourceAddress, string.Empty, responseMessage, physicalAddress, request);
             }
-        }
-
-        [SuppressMessage("Microsoft.Reliability", "CA2000:DisposeObjectsBeforeLosingScope", Justification = "Disposable object returned by method")]
-        internal Task<HttpResponseMessage> SendHttpAsync(HttpRequestMessage requestMessage, CancellationToken cancellationToken = default(CancellationToken))
-        {
-            return this.httpClient.SendHttpAsync(requestMessage, cancellationToken);
         }
 
         internal static async Task<DocumentServiceResponse> ParseResponseAsync(HttpResponseMessage responseMessage, JsonSerializerSettings serializerSettings = null, DocumentServiceRequest request = null)
