@@ -69,122 +69,122 @@ namespace Microsoft.Azure.Cosmos.Tests
 
         private readonly BatchAsyncBatcherRetryDelegate Retrier = (ItemBatchOperation operation, ITrace trace, CancellationToken cancellation) => Task.CompletedTask;
 
-        [DataTestMethod]
-        [ExpectedException(typeof(ArgumentOutOfRangeException))]
-        [DataRow(0)]
-        [DataRow(-1)]
-        public void ValidatesSize(int size)
-        {
-            _ = new BatchAsyncStreamer(size, MaxBatchByteSize, this.TimerWheel, this.limiter, 1, MockCosmosUtil.Serializer, this.Executor, this.Retrier);
-        }
+        ////[DataTestMethod]
+        ////[ExpectedException(typeof(ArgumentOutOfRangeException))]
+        ////[DataRow(0)]
+        ////[DataRow(-1)]
+        ////public void ValidatesSize(int size)
+        ////{
+        ////    _ = new BatchAsyncStreamer(size, MaxBatchByteSize, this.TimerWheel, this.limiter, 1, MockCosmosUtil.Serializer, this.Executor, this.Retrier);
+        ////}
 
-        [TestMethod]
-        [ExpectedException(typeof(ArgumentNullException))]
-        public void ValidatesExecutor()
-        {
-            _ = new BatchAsyncStreamer(1, MaxBatchByteSize, this.TimerWheel, this.limiter, 1, MockCosmosUtil.Serializer, null, this.Retrier);
-        }
+        ////[TestMethod]
+        ////[ExpectedException(typeof(ArgumentNullException))]
+        ////public void ValidatesExecutor()
+        ////{
+        ////    _ = new BatchAsyncStreamer(1, MaxBatchByteSize, this.TimerWheel, this.limiter, 1, MockCosmosUtil.Serializer, null, this.Retrier);
+        ////}
 
-        [TestMethod]
-        [ExpectedException(typeof(ArgumentNullException))]
-        public void ValidatesRetrier()
-        {
-            _ = new BatchAsyncStreamer(1, MaxBatchByteSize, this.TimerWheel, this.limiter, 1, MockCosmosUtil.Serializer, this.Executor, null);
-        }
+        ////[TestMethod]
+        ////[ExpectedException(typeof(ArgumentNullException))]
+        ////public void ValidatesRetrier()
+        ////{
+        ////    _ = new BatchAsyncStreamer(1, MaxBatchByteSize, this.TimerWheel, this.limiter, 1, MockCosmosUtil.Serializer, this.Executor, null);
+        ////}
 
-        [TestMethod]
-        [ExpectedException(typeof(ArgumentNullException))]
-        public void ValidatesSerializer()
-        {
-            _ = new BatchAsyncStreamer(1, MaxBatchByteSize, this.TimerWheel, this.limiter, 1, null, this.Executor, this.Retrier);
-        }
+        ////[TestMethod]
+        ////[ExpectedException(typeof(ArgumentNullException))]
+        ////public void ValidatesSerializer()
+        ////{
+        ////    _ = new BatchAsyncStreamer(1, MaxBatchByteSize, this.TimerWheel, this.limiter, 1, null, this.Executor, this.Retrier);
+        ////}
 
-        [TestMethod]
-        [ExpectedException(typeof(ArgumentNullException))]
-        public void ValidatesLimiter()
-        {
-            _ = new BatchAsyncStreamer(1, MaxBatchByteSize, this.TimerWheel, null, 1, null, this.Executor, this.Retrier);
-        }
+        ////[TestMethod]
+        ////[ExpectedException(typeof(ArgumentNullException))]
+        ////public void ValidatesLimiter()
+        ////{
+        ////    _ = new BatchAsyncStreamer(1, MaxBatchByteSize, this.TimerWheel, null, 1, null, this.Executor, this.Retrier);
+        ////}
 
-        [TestMethod]
-        public async Task ExceptionsOnBatchBubbleUpAsync()
-        {
-            BatchAsyncStreamer batchAsyncStreamer = new BatchAsyncStreamer(2, MaxBatchByteSize, this.TimerWheel, this.limiter, 1, MockCosmosUtil.Serializer, this.ExecutorWithFailure, this.Retrier);
-            ItemBatchOperationContext context = AttachContext(this.ItemBatchOperation);
-            batchAsyncStreamer.Add(this.ItemBatchOperation);
-            Exception capturedException = await Assert.ThrowsExceptionAsync<Exception>(() => context.OperationTask);
-            Assert.AreEqual(expectedException, capturedException);
-        }
+        ////[TestMethod]
+        ////public async Task ExceptionsOnBatchBubbleUpAsync()
+        ////{
+        ////    BatchAsyncStreamer batchAsyncStreamer = new BatchAsyncStreamer(2, MaxBatchByteSize, this.TimerWheel, this.limiter, 1, MockCosmosUtil.Serializer, this.ExecutorWithFailure, this.Retrier);
+        ////    ItemBatchOperationContext context = AttachContext(this.ItemBatchOperation);
+        ////    batchAsyncStreamer.Add(this.ItemBatchOperation);
+        ////    Exception capturedException = await Assert.ThrowsExceptionAsync<Exception>(() => context.OperationTask);
+        ////    Assert.AreEqual(expectedException, capturedException);
+        ////}
 
-        [TestMethod]
-        public async Task TimerDispatchesAsync()
-        {
-            // Bigger batch size than the amount of operations, timer should dispatch
-            BatchAsyncStreamer batchAsyncStreamer = new BatchAsyncStreamer(2, MaxBatchByteSize, this.TimerWheel, this.limiter, 1, MockCosmosUtil.Serializer, this.Executor, this.Retrier);
-            ItemBatchOperationContext context = AttachContext(this.ItemBatchOperation);
-            batchAsyncStreamer.Add(this.ItemBatchOperation);
-            TransactionalBatchOperationResult result = await context.OperationTask;
+        ////[TestMethod]
+        ////public async Task TimerDispatchesAsync()
+        ////{
+        ////    // Bigger batch size than the amount of operations, timer should dispatch
+        ////    BatchAsyncStreamer batchAsyncStreamer = new BatchAsyncStreamer(2, MaxBatchByteSize, this.TimerWheel, this.limiter, 1, MockCosmosUtil.Serializer, this.Executor, this.Retrier);
+        ////    ItemBatchOperationContext context = AttachContext(this.ItemBatchOperation);
+        ////    batchAsyncStreamer.Add(this.ItemBatchOperation);
+        ////    TransactionalBatchOperationResult result = await context.OperationTask;
 
-            Assert.AreEqual(this.ItemBatchOperation.Id, result.ETag);
-        }
+        ////    Assert.AreEqual(this.ItemBatchOperation.Id, result.ETag);
+        ////}
 
-        [TestMethod]
-        public async Task ValidatesCongestionControlAsync()
-        {
-            SemaphoreSlim newLimiter = new SemaphoreSlim(1, defaultMaxDegreeOfConcurrency);
-            BatchAsyncStreamer batchAsyncStreamer = new BatchAsyncStreamer(2, MaxBatchByteSize, this.TimerWheel, newLimiter, defaultMaxDegreeOfConcurrency, MockCosmosUtil.Serializer, this.Executor, this.Retrier);
+        ////[TestMethod]
+        ////public async Task ValidatesCongestionControlAsync()
+        ////{
+        ////    SemaphoreSlim newLimiter = new SemaphoreSlim(1, defaultMaxDegreeOfConcurrency);
+        ////    BatchAsyncStreamer batchAsyncStreamer = new BatchAsyncStreamer(2, MaxBatchByteSize, this.TimerWheel, newLimiter, defaultMaxDegreeOfConcurrency, MockCosmosUtil.Serializer, this.Executor, this.Retrier);
 
-            Assert.AreEqual(newLimiter.CurrentCount, 1);
+        ////    Assert.AreEqual(newLimiter.CurrentCount, 1);
 
-            List<Task<TransactionalBatchOperationResult>> contexts = new List<Task<TransactionalBatchOperationResult>>(100);
-            for (int i = 0; i < 600; i++)
-            {
-                ItemBatchOperation operation = new ItemBatchOperation(OperationType.Create, i, Cosmos.PartitionKey.Null, i.ToString());
-                ItemBatchOperationContext context = AttachContext(operation);
-                batchAsyncStreamer.Add(operation);
-                contexts.Add(context.OperationTask);
-            }
+        ////    List<Task<TransactionalBatchOperationResult>> contexts = new List<Task<TransactionalBatchOperationResult>>(100);
+        ////    for (int i = 0; i < 600; i++)
+        ////    {
+        ////        ItemBatchOperation operation = new ItemBatchOperation(OperationType.Create, i, Cosmos.PartitionKey.Null, i.ToString());
+        ////        ItemBatchOperationContext context = AttachContext(operation);
+        ////        batchAsyncStreamer.Add(operation);
+        ////        contexts.Add(context.OperationTask);
+        ////    }
 
-            // 300 batch request should atleast sum up to 1000 ms barrier with wait time of 20ms in executor
-            await Task.WhenAll(contexts);
+        ////    // 300 batch request should atleast sum up to 1000 ms barrier with wait time of 20ms in executor
+        ////    await Task.WhenAll(contexts);
 
-            await Task.Delay(2000);
+        ////    await Task.Delay(2000);
 
-            Assert.IsTrue(newLimiter.CurrentCount >= 2, "Count of threads that can enter into semaphore should increase atleast by 1");
-        }
+        ////    Assert.IsTrue(newLimiter.CurrentCount >= 2, "Count of threads that can enter into semaphore should increase atleast by 1");
+        ////}
 
-        [TestMethod]
-        public async Task DispatchesAsync()
-        {
-            // Expect all operations to complete as their batches get dispached
-            BatchAsyncStreamer batchAsyncStreamer = new BatchAsyncStreamer(
-                2,
-                MaxBatchByteSize,
-                this.TimerWheel,
-                this.limiter,
-                1,
-                MockCosmosUtil.Serializer,
-                this.Executor,
-                this.Retrier);
-            List<Task<TransactionalBatchOperationResult>> contexts = new List<Task<TransactionalBatchOperationResult>>(10);
-            for (int i = 0; i < 10; i++)
-            {
-                ItemBatchOperation operation = new ItemBatchOperation(OperationType.Create, i, Cosmos.PartitionKey.Null, i.ToString());
-                ItemBatchOperationContext context = AttachContext(operation);
-                batchAsyncStreamer.Add(operation);
-                contexts.Add(context.OperationTask);
-            }
+        ////[TestMethod]
+        ////public async Task DispatchesAsync()
+        ////{
+        ////    // Expect all operations to complete as their batches get dispached
+        ////    BatchAsyncStreamer batchAsyncStreamer = new BatchAsyncStreamer(
+        ////        2,
+        ////        MaxBatchByteSize,
+        ////        this.TimerWheel,
+        ////        this.limiter,
+        ////        1,
+        ////        MockCosmosUtil.Serializer,
+        ////        this.Executor,
+        ////        this.Retrier);
+        ////    List<Task<TransactionalBatchOperationResult>> contexts = new List<Task<TransactionalBatchOperationResult>>(10);
+        ////    for (int i = 0; i < 10; i++)
+        ////    {
+        ////        ItemBatchOperation operation = new ItemBatchOperation(OperationType.Create, i, Cosmos.PartitionKey.Null, i.ToString());
+        ////        ItemBatchOperationContext context = AttachContext(operation);
+        ////        batchAsyncStreamer.Add(operation);
+        ////        contexts.Add(context.OperationTask);
+        ////    }
 
-            await Task.WhenAll(contexts);
+        ////    await Task.WhenAll(contexts);
 
-            for (int i = 0; i < 10; i++)
-            {
-                Task<TransactionalBatchOperationResult> context = contexts[i];
-                Assert.AreEqual(TaskStatus.RanToCompletion, context.Status);
-                TransactionalBatchOperationResult result = await context;
-                Assert.AreEqual(i.ToString(), result.ETag);
-            }
-        }
+        ////    for (int i = 0; i < 10; i++)
+        ////    {
+        ////        Task<TransactionalBatchOperationResult> context = contexts[i];
+        ////        Assert.AreEqual(TaskStatus.RanToCompletion, context.Status);
+        ////        TransactionalBatchOperationResult result = await context;
+        ////        Assert.AreEqual(i.ToString(), result.ETag);
+        ////    }
+        ////}
 
         private static ItemBatchOperationContext AttachContext(ItemBatchOperation operation)
         {

@@ -68,7 +68,7 @@ namespace Microsoft.Azure.Cosmos
             this.retryOptions = cosmosClientContext.ClientOptions.GetConnectionPolicy().RetryOptions;
         }
 
-        public virtual async Task<Task<TransactionalBatchOperationResult>> AddAsync(
+        public virtual async Task<TransactionalBatchOperationResult> AddAsync(
             ItemBatchOperation operation,
             ItemRequestOptions itemRequestOptions = null,
             CancellationToken cancellationToken = default)
@@ -86,7 +86,7 @@ namespace Microsoft.Azure.Cosmos
             operation.AttachContext(context);
             streamer.Add(operation);
 
-            return context.OperationTask;
+            return await context.OperationTask;
         }
 
         public void FlushAndClose()

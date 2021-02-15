@@ -143,7 +143,7 @@ namespace Microsoft.Azure.Cosmos
                     requestOptions: null,
                     cosmosClientContext: this.ClientContext);
 
-                results[i++] = await executor.AddAsync(itemBatchOperation, null, cancellationToken);
+                results[i++] = executor.AddAsync(itemBatchOperation, null, cancellationToken);
             }
 
             executor.FlushAndClose();
