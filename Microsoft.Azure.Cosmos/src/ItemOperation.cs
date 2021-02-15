@@ -29,7 +29,7 @@ namespace Microsoft.Azure.Cosmos
         /// <param name="partitionKey"></param>
         /// <param name="id"></param>
         /// <returns>ItemOperation</returns>
-        public ItemOperation Read(PartitionKey partitionKey,
+        public static ItemOperation Read(PartitionKey partitionKey,
             string id)
         {
             return new ItemOperation()
