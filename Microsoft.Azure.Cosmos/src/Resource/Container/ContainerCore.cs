@@ -118,6 +118,38 @@ namespace Microsoft.Azure.Cosmos
             return this.ClientContext.ResponseFactory.CreateContainerResponse(this, response);
         }
 
+        public async Task<TransactionalBatchOperationResult[]> ExecuteManyAsync(
+           ITrace trace,
+           ItemOperation[] batchOperations,
+           TransactionalBatchRequestOptions requestOptions,
+           CancellationToken cancellationToken = default)
+        {
+            BatchAsyncContainerExecutor executor = new BatchAsyncContainerExecutor(
+                    this,
+                    this.ClientContext,
+                    Constants.MaxOperationsInDirectModeBatchRequest,
+                    BatchAsyncContainerExecutorCache.DefaultMaxBulkRequestBodySizeInBytes);
+
+            Task<TransactionalBatchOperationResult>[] results = new Task<TransactionalBatchOperationResult>[batchOperations.Length];
+            int i = 0;
+            foreach (ItemOperation operation in batchOperations)
+            {
+                ItemBatchOperation itemBatchOperation = new ItemBatchOperation(
+                    operationType: OperationType.Read,
+                    operationIndex: 0,
+                    partitionKey: operation.PartitionKey,
+                    id: operation.Id,
+                    resourceStream: null,
+                    requestOptions: null,
+                    cosmosClientContext: this.ClientContext);
+
+                results[i++] = await executor.AddAsync(itemBatchOperation, null, cancellationToken);
+            }
+
+            executor.FlushAndClose();
+            return await Task.WhenAll(results);
+        }
+
         public async Task<int?> ReadThroughputAsync(
             ITrace trace,
             CancellationToken cancellationToken = default)

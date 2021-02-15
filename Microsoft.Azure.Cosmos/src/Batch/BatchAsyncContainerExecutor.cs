@@ -26,8 +26,8 @@ namespace Microsoft.Azure.Cosmos
     /// <seealso cref="BatchAsyncStreamer"/>
     internal class BatchAsyncContainerExecutor : IDisposable
     {
-        private const int TimerWheelBucketCount = 20;
-        private static readonly TimeSpan TimerWheelResolution = TimeSpan.FromMilliseconds(50);
+        internal const int TimerWheelBucketCount = 20;
+        internal static readonly TimeSpan TimerWheelResolution = TimeSpan.FromMilliseconds(50);
 
         private readonly ContainerInternal cosmosContainer;
         private readonly CosmosClientContext cosmosClientContext;
@@ -35,7 +35,6 @@ namespace Microsoft.Azure.Cosmos
         private readonly int maxServerRequestOperationCount;
         private readonly ConcurrentDictionary<string, BatchAsyncStreamer> streamersByPartitionKeyRange = new ConcurrentDictionary<string, BatchAsyncStreamer>();
         private readonly ConcurrentDictionary<string, SemaphoreSlim> limitersByPartitionkeyRange = new ConcurrentDictionary<string, SemaphoreSlim>();
-        private readonly TimerWheel timerWheel;
         private readonly RetryOptions retryOptions;
         private readonly int defaultMaxDegreeOfConcurrency = 50;
 
@@ -66,11 +65,10 @@ namespace Microsoft.Azure.Cosmos
             this.cosmosClientContext = cosmosClientContext;
             this.maxServerRequestBodyLength = maxServerRequestBodyLength;
             this.maxServerRequestOperationCount = maxServerRequestOperationCount;
-            this.timerWheel = TimerWheel.CreateTimerWheel(BatchAsyncContainerExecutor.TimerWheelResolution, BatchAsyncContainerExecutor.TimerWheelBucketCount);
             this.retryOptions = cosmosClientContext.ClientOptions.GetConnectionPolicy().RetryOptions;
         }
 
-        public virtual async Task<TransactionalBatchOperationResult> AddAsync(
+        public virtual async Task<Task<TransactionalBatchOperationResult>> AddAsync(
             ItemBatchOperation operation,
             ItemRequestOptions itemRequestOptions = null,
             CancellationToken cancellationToken = default)
@@ -87,7 +85,16 @@ namespace Microsoft.Azure.Cosmos
             ItemBatchOperationContext context = new ItemBatchOperationContext(resolvedPartitionKeyRangeId, BatchAsyncContainerExecutor.GetRetryPolicy(this.cosmosContainer, operation.OperationType, this.retryOptions));
             operation.AttachContext(context);
             streamer.Add(operation);
-            return await context.OperationTask;
+
+            return context.OperationTask;
+        }
+
+        public void FlushAndClose()
+        {
+            foreach (KeyValuePair<string, BatchAsyncStreamer> streamer in this.streamersByPartitionKeyRange)
+            {
+                streamer.Value.FlushAndClose();
+            }
         }
 
         public void Dispose()
@@ -101,8 +108,6 @@ namespace Microsoft.Azure.Cosmos
             {
                 limiter.Value.Dispose();
             }
-
-            this.timerWheel.Dispose();
         }
 
         internal virtual async Task ValidateOperationAsync(
@@ -196,8 +201,7 @@ namespace Microsoft.Azure.Cosmos
             cancellationToken.ThrowIfCancellationRequested();
             PartitionKeyDefinition partitionKeyDefinition = await this.cosmosContainer.GetPartitionKeyDefinitionAsync(cancellationToken);
             CollectionRoutingMap collectionRoutingMap = await this.cosmosContainer.GetRoutingMapAsync(cancellationToken);
-
-            Debug.Assert(operation.RequestOptions?.Properties?.TryGetValue(WFConstants.BackendHeaders.EffectivePartitionKeyString, out object epkObj) == null, "EPK is not supported");
+            Debug.Assert(operation.RequestOptions?.Properties?.TryGetValue(WFConstants.BackendHeaders.EffectivePartitionKeyString, out _) == null, "EPK is not supported");
             Documents.Routing.PartitionKeyInternal partitionKeyInternal = await this.GetPartitionKeyInternalAsync(operation, cancellationToken);
             operation.PartitionKeyJson = partitionKeyInternal.ToJsonString();
             string effectivePartitionKeyString = partitionKeyInternal.GetEffectivePartitionKeyString(partitionKeyDefinition);
@@ -264,7 +268,6 @@ namespace Microsoft.Azure.Cosmos
             BatchAsyncStreamer newStreamer = new BatchAsyncStreamer(
                 this.maxServerRequestOperationCount,
                 this.maxServerRequestBodyLength,
-                this.timerWheel,
                 limiter,
                 this.defaultMaxDegreeOfConcurrency,
                 this.cosmosClientContext.SerializerCore,

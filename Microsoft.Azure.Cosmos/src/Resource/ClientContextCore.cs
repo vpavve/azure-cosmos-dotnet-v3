@@ -438,12 +438,12 @@ namespace Microsoft.Azure.Cosmos
                 requestOptions: batchItemRequestOptions,
                 cosmosClientContext: this);
 
-            TransactionalBatchOperationResult batchOperationResult = await cosmosContainerCore.BatchExecutor.AddAsync(
+            Task<TransactionalBatchOperationResult> batchOperationResultTask = await cosmosContainerCore.BatchExecutor.AddAsync(
                 itemBatchOperation,
                 itemRequestOptions,
                 cancellationToken);
 
-            return batchOperationResult.ToResponseMessage();
+            return (await batchOperationResultTask).ToResponseMessage();
         }
 
         private bool IsBulkOperationSupported(

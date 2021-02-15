@@ -83,6 +83,17 @@ namespace Microsoft.Azure.Cosmos
                 (trace) => base.DeleteContainerAsync(trace, requestOptions, cancellationToken));
         }
 
+        public override Task<TransactionalBatchOperationResult[]> ExecuteManyAsync(
+           ItemOperation[] batchOperations,
+           TransactionalBatchRequestOptions requestOptions,
+           CancellationToken cancellationToken = default)
+        {
+            return this.ClientContext.OperationHelperAsync(
+                nameof(ExecuteManyAsync),
+                requestOptions,
+                (trace) => base.ExecuteManyAsync(trace, batchOperations, requestOptions, cancellationToken));
+        }
+
         public override Task<ResponseMessage> DeleteContainerStreamAsync(
             ContainerRequestOptions requestOptions = null,
             CancellationToken cancellationToken = default)

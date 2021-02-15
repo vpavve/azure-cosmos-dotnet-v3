@@ -631,7 +631,20 @@ namespace Microsoft.Azure.Cosmos
             ItemRequestOptions requestOptions = null,
             CancellationToken cancellationToken = default);
 
+        /// <summary>
+        /// TBD documentation, make it IAsyncEnumerable 
+        /// </summary>
+        /// <param name="batchOperations"></param>
+        /// <param name="requestOptions"></param>
+        /// <param name="cancellationToken"></param>
+        /// <returns>TransactionalBatchResponse</returns>
+        public abstract Task<TransactionalBatchOperationResult[]> ExecuteManyAsync(
+           ItemOperation[] batchOperations,
+           TransactionalBatchRequestOptions requestOptions,
+           CancellationToken cancellationToken = default);
+
 #if INTERNAL
+
         /// <summary>
         /// Patches an item in the Azure Cosmos service as an asynchronous operation.
         /// </summary>
