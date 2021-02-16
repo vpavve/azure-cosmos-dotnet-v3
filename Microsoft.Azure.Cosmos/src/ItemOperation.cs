@@ -7,6 +7,7 @@ namespace Microsoft.Azure.Cosmos
     using System;
     using System.Collections.Generic;
     using System.Text;
+    using Microsoft.Azure.Documents;
 
     /// <summary>
     /// Item Opertaion representation
@@ -23,6 +24,8 @@ namespace Microsoft.Azure.Cosmos
         /// </summary>
         public string Id { get; set; }
 
+        internal OperationType OperationType { get; set; }
+
         /// <summary>
         /// Read Factory 
         /// </summary>
@@ -36,6 +39,7 @@ namespace Microsoft.Azure.Cosmos
             {
                 PartitionKey = partitionKey,
                 Id = id,
+                OperationType = OperationType.Read,
             };
         }
     }

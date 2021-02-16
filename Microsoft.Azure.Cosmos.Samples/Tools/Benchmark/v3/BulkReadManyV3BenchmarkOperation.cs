@@ -35,22 +35,24 @@ namespace CosmosBenchmark
 
         public async Task<OperationResult> ExecuteOnceAsync()
         {
-            ItemOperation[] itemOperations = new ItemOperation[100];
-            for (int i=0; i < 100; i++)
+            int count = 100;
+            
+            ItemOperation[] itemOperations = new ItemOperation[count];
+            for (int i=0; i < count; i++)
             {
                 itemOperations[i] = ItemOperation.Read(
                     new PartitionKey(Guid.NewGuid().ToString()), 
                                Guid.NewGuid().ToString());
             }
 
-            TransactionalBatchOperationResult[] manyResults = await this.container.ExecuteManyAsync(
+            Tuple<CosmosDiagnostics, TransactionalBatchOperationResult[]> manyResults = await this.container.ExecuteManyAsync(
                         itemOperations,
                         null,
                         CancellationToken.None);
 
-            foreach(TransactionalBatchOperationResult result in manyResults)
+            foreach(TransactionalBatchOperationResult result in manyResults.Item2)
             {
-                if (result.StatusCode == System.Net.HttpStatusCode.NotFound)
+                if (result.StatusCode != System.Net.HttpStatusCode.NotFound)
                 {
                     System.Console.WriteLine($"Got status code: {result.StatusCode}");
                 }
@@ -61,8 +63,8 @@ namespace CosmosBenchmark
                 DatabseName = databaseName,
                 ContainerName = containerName,
                 RuCharges = 0,
-                CosmosDiagnostics = null,
-                LazyDiagnostics = () => string.Empty,
+                CosmosDiagnostics = manyResults.Item1,
+                LazyDiagnostics = () => manyResults.Item1.ToString(),
             };
         }
 

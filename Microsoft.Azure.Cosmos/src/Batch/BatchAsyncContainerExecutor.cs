@@ -68,6 +68,35 @@ namespace Microsoft.Azure.Cosmos
             this.retryOptions = cosmosClientContext.ClientOptions.GetConnectionPolicy().RetryOptions;
         }
 
+        public virtual async Task<TransactionalBatchOperationResult[]> AddAsync(
+            ItemBatchOperation[] operations,
+            ItemRequestOptions itemRequestOptions = null,
+            CancellationToken cancellationToken = default)
+        {
+            if (operations == null)
+            {
+                throw new ArgumentNullException(nameof(operations));
+            }
+
+            Task<TransactionalBatchOperationResult>[] resultTasks = new Task<TransactionalBatchOperationResult>[operations.Length];
+            for (int i = 0; i < operations.Length; i++)
+            {
+                ItemBatchOperation operation = operations[i];
+                await this.ValidateOperationAsync(operation, itemRequestOptions, cancellationToken);
+
+                string resolvedPartitionKeyRangeId = await this.ResolvePartitionKeyRangeIdAsync(operation, cancellationToken).ConfigureAwait(false);
+                BatchAsyncStreamer streamer = this.GetOrAddStreamerForPartitionKeyRange(resolvedPartitionKeyRangeId);
+                ItemBatchOperationContext context = new ItemBatchOperationContext(resolvedPartitionKeyRangeId, BatchAsyncContainerExecutor.GetRetryPolicy(this.cosmosContainer, operation.OperationType, this.retryOptions));
+                operation.AttachContext(context);
+                streamer.Add(operation);
+
+                resultTasks[i] = context.OperationTask;
+            }
+
+            this.FlushAndClose();
+            return await Task.WhenAll(resultTasks);
+        }
+
         public virtual async Task<TransactionalBatchOperationResult> AddAsync(
             ItemBatchOperation operation,
             ItemRequestOptions itemRequestOptions = null,
@@ -89,7 +118,7 @@ namespace Microsoft.Azure.Cosmos
             return await context.OperationTask;
         }
 
-        public void FlushAndClose()
+        private void FlushAndClose()
         {
             foreach (KeyValuePair<string, BatchAsyncStreamer> streamer in this.streamersByPartitionKeyRange)
             {

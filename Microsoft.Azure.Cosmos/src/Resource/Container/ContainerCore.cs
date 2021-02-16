@@ -10,6 +10,7 @@ namespace Microsoft.Azure.Cosmos
     using System.Net;
     using System.Threading;
     using System.Threading.Tasks;
+    using System.Xml.XPath;
     using Microsoft.Azure.Cosmos.ChangeFeed;
     using Microsoft.Azure.Cosmos.ChangeFeed.Pagination;
     using Microsoft.Azure.Cosmos.Diagnostics;
@@ -118,36 +119,40 @@ namespace Microsoft.Azure.Cosmos
             return this.ClientContext.ResponseFactory.CreateContainerResponse(this, response);
         }
 
-        public async Task<TransactionalBatchOperationResult[]> ExecuteManyAsync(
+        public async Task<Tuple<CosmosDiagnostics, TransactionalBatchOperationResult[]>> ExecuteManyAsync(
            ITrace trace,
            ItemOperation[] batchOperations,
-           TransactionalBatchRequestOptions requestOptions,
+           TransactionalBatchRequestOptions requestOptions, // TODO:
            CancellationToken cancellationToken = default)
         {
-            BatchAsyncContainerExecutor executor = new BatchAsyncContainerExecutor(
-                    this,
-                    this.ClientContext,
-                    Constants.MaxOperationsInDirectModeBatchRequest,
-                    BatchAsyncContainerExecutorCache.DefaultMaxBulkRequestBodySizeInBytes);
+            CosmosDiagnostics diagnostics = new CosmosTraceDiagnostics(trace);
+            ItemBatchOperation[] itemBatchOperations = new ItemBatchOperation[batchOperations.Length];
 
-            Task<TransactionalBatchOperationResult>[] results = new Task<TransactionalBatchOperationResult>[batchOperations.Length];
-            int i = 0;
-            foreach (ItemOperation operation in batchOperations)
+            for (int i = 0; i < batchOperations.Length; i++)
             {
-                ItemBatchOperation itemBatchOperation = new ItemBatchOperation(
-                    operationType: OperationType.Read,
+                ItemOperation operation = batchOperations[i];
+
+                itemBatchOperations[i] = new ItemBatchOperation(
+                    operationType: operation.OperationType,
                     operationIndex: 0,
                     partitionKey: operation.PartitionKey,
                     id: operation.Id,
                     resourceStream: null,
                     requestOptions: null,
                     cosmosClientContext: this.ClientContext);
-
-                results[i++] = executor.AddAsync(itemBatchOperation, null, cancellationToken);
             }
 
-            executor.FlushAndClose();
-            return await Task.WhenAll(results);
+            TransactionalBatchOperationResult[] results = null;
+            using (BatchAsyncContainerExecutor executor = new BatchAsyncContainerExecutor(
+                    this,
+                    this.ClientContext,
+                    Constants.MaxOperationsInDirectModeBatchRequest,
+                    BatchAsyncContainerExecutorCache.DefaultMaxBulkRequestBodySizeInBytes))
+            {
+                results = await executor.AddAsync(itemBatchOperations, null, cancellationToken);
+            }
+
+            return new Tuple<CosmosDiagnostics, TransactionalBatchOperationResult[]>(diagnostics, results);
         }
 
         public async Task<int?> ReadThroughputAsync(

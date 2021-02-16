@@ -638,7 +638,7 @@ namespace Microsoft.Azure.Cosmos
         /// <param name="requestOptions"></param>
         /// <param name="cancellationToken"></param>
         /// <returns>TransactionalBatchResponse</returns>
-        public abstract Task<TransactionalBatchOperationResult[]> ExecuteManyAsync(
+        public abstract Task<Tuple<CosmosDiagnostics, TransactionalBatchOperationResult[]>> ExecuteManyAsync(
            ItemOperation[] batchOperations,
            TransactionalBatchRequestOptions requestOptions,
            CancellationToken cancellationToken = default);
