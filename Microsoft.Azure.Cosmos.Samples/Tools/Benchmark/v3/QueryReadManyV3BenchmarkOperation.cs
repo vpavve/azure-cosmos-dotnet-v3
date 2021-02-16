@@ -44,7 +44,7 @@ namespace CosmosBenchmark
 
             do
             {
-                query.Append($" (c.partitionkey=\"{Guid.NewGuid()}\" and c.id = \"{Guid.NewGuid()}\") ");
+                query.Append($" (c.{this.partitionKeyPath}=\"{Guid.NewGuid()}\" and c.id = \"{Guid.NewGuid()}\") ");
                 i++;
 
                 if (i < count)
