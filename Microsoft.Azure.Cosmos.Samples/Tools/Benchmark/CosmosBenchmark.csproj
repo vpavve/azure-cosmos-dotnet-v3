@@ -19,20 +19,16 @@
   <ItemGroup>
     <PackageReference Include="CommandLineParser" Version="2.5.0" />
     <PackageReference Include="MathNet.Numerics" Version="4.12.0" />
+    <PackageReference Include="Microsoft.Azure.Cosmos.Direct" Version="3.17.1" />
     <PackageReference Include="Microsoft.Azure.DocumentDB.Core" Version="*" />
-  </ItemGroup>
-
-  <ItemGroup Condition=" '$(ProjectRef)' != 'True' ">
-    <!-- Enabled easier integration into master -->
-    <PackageReference Include="Microsoft.Azure.Cosmos" Version="*" />
-  </ItemGroup>
-
-  <ItemGroup Condition=" '$(ProjectRef)' == 'True' ">
-    <ProjectReference Include="..\..\..\Microsoft.Azure.Cosmos\src\Microsoft.Azure.Cosmos.csproj" />
+    <PackageReference Include="Microsoft.HybridRow" Version="1.1.0-preview1" />
   </ItemGroup>
   <ItemGroup Condition=" '$(OSSProjectRef)' == 'True' ">
     <ProjectReference Include="..\..\..\Microsoft.Azure.Cosmos\src\Microsoft.Azure.Cosmos.csproj" />
     <PackageReference Include="Microsoft.Azure.Cosmos.Direct" Version="[$(DirectVersion)]" />
     <PackageReference Include="Microsoft.Azure.Cosmos.Serialization.HybridRow" Version="[$(HybridRowVersion)]" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Microsoft.Azure.Cosmos\src\Microsoft.Azure.Cosmos.csproj" />
   </ItemGroup>
 </Project>

@@ -14,6 +14,7 @@ namespace Microsoft.Azure.Cosmos
     using Microsoft.Azure.Documents;
     using Microsoft.Azure.Documents.Collections;
     using Microsoft.Azure.Cosmos.Tests;
+    using Microsoft.Azure.Cosmos.Tracing;
 
     /// <summary>
     /// Tests for <see cref="GatewayAccountReader"/>.
@@ -57,9 +58,10 @@ namespace Microsoft.Azure.Cosmos
             Assert.IsNotNull(httpClient);
             HttpResponseMessage response = await httpClient.GetAsync(
                 uri: new Uri("https://localhost"),
-                additionalHeaders: new DictionaryNameValueCollection(),
+                additionalHeaders: new StoreRequestNameValueCollection(),
                 resourceType: ResourceType.Document,
-                diagnosticsContext: null,
+                timeoutPolicy: HttpTimeoutPolicyDefault.Instance,
+                trace: NoOpTrace.Singleton,
                 cancellationToken: default);
 
             Assert.AreEqual(HttpStatusCode.Conflict, response.StatusCode);

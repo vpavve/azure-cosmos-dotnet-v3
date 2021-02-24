@@ -7,6 +7,8 @@ namespace Microsoft.Azure.Cosmos
     using System;
     using System.Threading;
     using System.Threading.Tasks;
+    using Microsoft.Azure.Cosmos.ChangeFeed.Pagination;
+    using Microsoft.Azure.Cosmos.Tracing;
 
     /// <summary>
     /// Handles operation queueing and dispatching.
@@ -33,14 +35,13 @@ namespace Microsoft.Azure.Cosmos
         private readonly int congestionIncreaseFactor = 1;
         private readonly int congestionDecreaseFactor = 5;
         private readonly int maxDegreeOfConcurrency;
-        private readonly TimerWheel timerWheel;
+        private static readonly TimerWheel timerWheel = TimerWheel.CreateTimerWheel(BatchAsyncContainerExecutor.TimerWheelResolution, BatchAsyncContainerExecutor.TimerWheelBucketCount);
         private readonly SemaphoreSlim limiter;
+
         private readonly BatchPartitionMetric oldPartitionMetric;
         private readonly BatchPartitionMetric partitionMetric;
 
         private volatile BatchAsyncBatcher currentBatcher;
-        private TimerWheelTimer currentTimer;
-        private Task timerTask;
 
         private TimerWheelTimer congestionControlTimer;
         private Task congestionControlTask;
@@ -51,7 +52,6 @@ namespace Microsoft.Azure.Cosmos
         public BatchAsyncStreamer(
             int maxBatchOperationCount,
             int maxBatchByteSize,
-            TimerWheel timerWheel,
             SemaphoreSlim limiter,
             int maxDegreeOfConcurrency,
             CosmosSerializerCore serializerCore,
@@ -97,10 +97,8 @@ namespace Microsoft.Azure.Cosmos
             this.maxBatchByteSize = maxBatchByteSize;
             this.executor = executor;
             this.retrier = retrier;
-            this.timerWheel = timerWheel;
             this.serializerCore = serializerCore;
             this.currentBatcher = this.CreateBatchAsyncBatcher();
-            this.ResetTimer();
 
             this.limiter = limiter;
             this.oldPartitionMetric = new BatchPartitionMetric();
@@ -115,6 +113,7 @@ namespace Microsoft.Azure.Cosmos
             BatchAsyncBatcher toDispatch = null;
             lock (this.dispatchLimiter)
             {
+                // TODO: Might throw NRE
                 while (!this.currentBatcher.TryAdd(operation))
                 {
                     // Batcher is full
@@ -129,14 +128,26 @@ namespace Microsoft.Azure.Cosmos
             }
         }
 
+        public void FlushAndClose()
+        {
+            BatchAsyncBatcher toDispatch = null;
+            lock (this.dispatchLimiter)
+            {
+                toDispatch = this.currentBatcher;
+                this.currentBatcher = null;
+            }
+
+            if (toDispatch != null)
+            {
+                // Discarded for Fire & Forget
+                _ = toDispatch.DispatchAsync(this.partitionMetric, this.cancellationTokenSource.Token);
+            }
+        }
+
         public void Dispose()
         {
             this.cancellationTokenSource.Cancel();
             this.cancellationTokenSource.Dispose();
-
-            this.currentTimer.CancelTimer();
-            this.currentTimer = null;
-            this.timerTask = null;
 
             if (this.congestionControlTimer != null)
             {
@@ -146,47 +157,13 @@ namespace Microsoft.Azure.Cosmos
             }
         }
 
-        private void ResetTimer()
-        {
-            this.currentTimer = this.timerWheel.CreateTimer(BatchAsyncStreamer.batchTimeout);
-            this.timerTask = this.currentTimer.StartTimerAsync().ContinueWith((task) =>
-            {
-                if (task.IsCompleted)
-                {
-                    this.DispatchTimer();
-                }
-            }, this.cancellationTokenSource.Token);
-        }
-
         private void StartCongestionControlTimer()
         {
-            this.congestionControlTimer = this.timerWheel.CreateTimer(BatchAsyncStreamer.congestionControllerDelay);
+            this.congestionControlTimer = BatchAsyncStreamer.timerWheel.CreateTimer(BatchAsyncStreamer.congestionControllerDelay);
             this.congestionControlTask = this.congestionControlTimer.StartTimerAsync().ContinueWith(async (task) =>
             {
                 await this.RunCongestionControlAsync();
             }, this.cancellationTokenSource.Token);
-        }
-
-        private void DispatchTimer()
-        {
-            if (this.cancellationTokenSource.IsCancellationRequested)
-            {
-                return;
-            }
-
-            BatchAsyncBatcher toDispatch;
-            lock (this.dispatchLimiter)
-            {
-                toDispatch = this.GetBatchToDispatchAndCreate();
-            }
-
-            if (toDispatch != null)
-            {
-                // Discarded for Fire & Forget
-                _ = toDispatch.DispatchAsync(this.partitionMetric, this.cancellationTokenSource.Token);
-            }
-
-            this.ResetTimer();
         }
 
         private BatchAsyncBatcher GetBatchToDispatchAndCreate()

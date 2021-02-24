@@ -23,6 +23,7 @@ namespace Microsoft.Azure.Cosmos.Query
     using Microsoft.Azure.Cosmos.Query.Core.Monads;
     using Microsoft.Azure.Cosmos.Query.Core.QueryPlan;
     using Microsoft.Azure.Cosmos.Routing;
+    using Microsoft.Azure.Cosmos.Tracing;
     using Microsoft.Azure.Documents;
     using Microsoft.Azure.Documents.Collections;
     using Microsoft.Azure.Documents.Routing;
@@ -90,7 +91,7 @@ namespace Microsoft.Azure.Cosmos.Query
         public static readonly DocumentFeedResponse<dynamic> EmptyFeedResponse = new DocumentFeedResponse<dynamic>(
             Enumerable.Empty<dynamic>(),
             Enumerable.Empty<dynamic>().Count(),
-            new DictionaryNameValueCollection());
+            new StoreRequestNameValueCollection());
         protected SqlQuerySpec querySpec;
         private readonly Expression expression;
         private readonly FeedOptions feedOptions;
@@ -199,7 +200,7 @@ namespace Microsoft.Azure.Cosmos.Query
 
         public async Task<INameValueCollection> CreateCommonHeadersAsync(FeedOptions feedOptions)
         {
-            INameValueCollection requestHeaders = new DictionaryNameValueCollection();
+            INameValueCollection requestHeaders = new StoreRequestNameValueCollection();
 
             Cosmos.ConsistencyLevel defaultConsistencyLevel = (Cosmos.ConsistencyLevel)await this.Client.GetDefaultConsistencyLevelAsync();
             Cosmos.ConsistencyLevel? desiredConsistencyLevel = (Cosmos.ConsistencyLevel?)await this.Client.GetDesiredConsistencyLevelAsync();
@@ -502,7 +503,7 @@ namespace Microsoft.Azure.Cosmos.Query
         protected async Task<List<PartitionKeyRange>> GetReplacementRangesAsync(PartitionKeyRange targetRange, string collectionRid)
         {
             IRoutingMapProvider routingMapProvider = await this.Client.GetRoutingMapProviderAsync();
-            List<PartitionKeyRange> replacementRanges = (await routingMapProvider.TryGetOverlappingRangesAsync(collectionRid, targetRange.ToRange(), true)).ToList();
+            List<PartitionKeyRange> replacementRanges = (await routingMapProvider.TryGetOverlappingRangesAsync(collectionRid, targetRange.ToRange(), NoOpTrace.Singleton, forceRefresh: true)).ToList();
             string replaceMinInclusive = replacementRanges.First().MinInclusive;
             string replaceMaxExclusive = replacementRanges.Last().MaxExclusive;
             if (!replaceMinInclusive.Equals(targetRange.MinInclusive, StringComparison.Ordinal) || !replaceMaxExclusive.Equals(targetRange.MaxExclusive, StringComparison.Ordinal))

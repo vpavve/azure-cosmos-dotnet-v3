@@ -11,6 +11,7 @@ namespace Microsoft.Azure.Cosmos
     using System.Threading.Tasks;
     using global::Azure.Core;
     using Microsoft.Azure.Cosmos.Handlers;
+    using Microsoft.Azure.Cosmos.Tracing;
     using Microsoft.Azure.Documents;
 
     /// <summary>
@@ -98,7 +99,11 @@ namespace Microsoft.Azure.Cosmos
 
         static CosmosClient()
         {
+            #if PREVIEW
+            HttpConstants.Versions.CurrentVersion = HttpConstants.Versions.v2020_07_15;
+            #else
             HttpConstants.Versions.CurrentVersion = HttpConstants.Versions.v2018_12_31;
+            #endif
             HttpConstants.Versions.CurrentVersionUTF8 = Encoding.UTF8.GetBytes(HttpConstants.Versions.CurrentVersion);
 
             // V3 always assumes assemblies exists
@@ -242,10 +247,14 @@ namespace Microsoft.Azure.Cosmos
                 throw new ArgumentNullException(nameof(tokenCredential));
             }
 
+            clientOptions ??= new CosmosClientOptions();
+
             this.Endpoint = new Uri(accountEndpoint);
-            this.AuthorizationTokenProvider = new AuthorizationTokenProviderTokenCredential(tokenCredential,
-                accountEndpoint,
-                clientOptions?.TokenCredentialBackgroundRefreshInterval);
+            this.AuthorizationTokenProvider = new AuthorizationTokenProviderTokenCredential(
+                tokenCredential,
+                this.Endpoint,
+                clientOptions.RequestTimeout,
+                clientOptions.TokenCredentialBackgroundRefreshInterval);
 
             this.ClientContext = ClientContextCore.Create(
                 this,
@@ -432,7 +441,7 @@ namespace Microsoft.Azure.Cosmos
             return this.ClientContext.OperationHelperAsync(
                 nameof(CreateDatabaseAsync),
                 requestOptions,
-                (diagnostics) =>
+                (trace) =>
                 {
                     DatabaseProperties databaseProperties = this.PrepareDatabaseProperties(id);
                     ThroughputProperties throughputProperties = ThroughputProperties.CreateManualThroughput(throughput);
@@ -441,7 +450,7 @@ namespace Microsoft.Azure.Cosmos
                         databaseProperties: databaseProperties,
                         throughputProperties: throughputProperties,
                         requestOptions: requestOptions,
-                        diagnosticsContext: diagnostics,
+                        trace: trace,
                         cancellationToken: cancellationToken);
                 });
         }
@@ -478,14 +487,14 @@ namespace Microsoft.Azure.Cosmos
             return this.ClientContext.OperationHelperAsync(
                 nameof(CreateDatabaseAsync),
                 requestOptions,
-                (diagnostics) =>
+                (trace) =>
                 {
                     DatabaseProperties databaseProperties = this.PrepareDatabaseProperties(id);
                     return this.CreateDatabaseInternalAsync(
-                        diagnosticsContext: diagnostics,
                         databaseProperties: databaseProperties,
                         throughputProperties: throughputProperties,
                         requestOptions: requestOptions,
+                        trace: trace,
                         cancellationToken: cancellationToken);
                 });
         }
@@ -533,16 +542,18 @@ namespace Microsoft.Azure.Cosmos
                 : this.ClientContext.OperationHelperAsync(
                 nameof(CreateDatabaseIfNotExistsAsync),
                 requestOptions,
-                async (diagnostics) =>
+                async (trace) =>
             {
+                double totalRequestCharge = 0;
                 // Doing a Read before Create will give us better latency for existing databases
                 DatabaseProperties databaseProperties = this.PrepareDatabaseProperties(id);
                 DatabaseCore database = (DatabaseCore)this.GetDatabase(id);
                 using (ResponseMessage readResponse = await database.ReadStreamAsync(
-                    diagnosticsContext: diagnostics,
                     requestOptions: requestOptions,
+                    trace: trace,
                     cancellationToken: cancellationToken))
                 {
+                    totalRequestCharge = readResponse.Headers.RequestCharge;
                     if (readResponse.StatusCode != HttpStatusCode.NotFound)
                     {
                         return this.ClientContext.ResponseFactory.CreateDatabaseResponse(database, readResponse);
@@ -550,12 +561,15 @@ namespace Microsoft.Azure.Cosmos
                 }
 
                 using (ResponseMessage createResponse = await this.CreateDatabaseStreamInternalAsync(
-                    diagnostics,
                     databaseProperties,
                     throughputProperties,
                     requestOptions,
+                    trace,
                     cancellationToken))
                 {
+                    totalRequestCharge += createResponse.Headers.RequestCharge;
+                    createResponse.Headers.RequestCharge = totalRequestCharge;
+
                     if (createResponse.StatusCode != HttpStatusCode.Conflict)
                     {
                         return this.ClientContext.ResponseFactory.CreateDatabaseResponse(this.GetDatabase(databaseProperties.Id), createResponse);
@@ -564,12 +578,16 @@ namespace Microsoft.Azure.Cosmos
 
                 // This second Read is to handle the race condition when 2 or more threads have Read the database and only one succeeds with Create
                 // so for the remaining ones we should do a Read instead of throwing Conflict exception
-                ResponseMessage readResponseAfterConflict = await database.ReadStreamAsync(
-                    diagnosticsContext: diagnostics,
+                using (ResponseMessage readResponseAfterConflict = await database.ReadStreamAsync(
                     requestOptions: requestOptions,
-                    cancellationToken: cancellationToken);
+                    trace: trace,
+                    cancellationToken: cancellationToken))
+                {
+                    totalRequestCharge += readResponseAfterConflict.Headers.RequestCharge;
+                    readResponseAfterConflict.Headers.RequestCharge = totalRequestCharge;
 
-                return this.ClientContext.ResponseFactory.CreateDatabaseResponse(this.GetDatabase(databaseProperties.Id), readResponseAfterConflict);
+                    return this.ClientContext.ResponseFactory.CreateDatabaseResponse(this.GetDatabase(databaseProperties.Id), readResponseAfterConflict);
+                }
             });
         }
 
@@ -859,14 +877,14 @@ namespace Microsoft.Azure.Cosmos
             return this.ClientContext.OperationHelperAsync(
                  nameof(CreateDatabaseStreamAsync),
                  requestOptions,
-                 (diagnostics) =>
+                 (trace) =>
                  {
                      this.ClientContext.ValidateResource(databaseProperties.Id);
                      return this.CreateDatabaseStreamInternalAsync(
-                         diagnostics,
                          databaseProperties,
                          ThroughputProperties.CreateManualThroughput(throughput),
                          requestOptions,
+                         trace,
                          cancellationToken);
                  });
         }
@@ -928,23 +946,23 @@ namespace Microsoft.Azure.Cosmos
             return this.ClientContext.OperationHelperAsync(
                 nameof(CreateDatabaseIfNotExistsAsync),
                 requestOptions,
-                (diagnostics) =>
+                (trace) =>
                 {
                     this.ClientContext.ValidateResource(databaseProperties.Id);
                     return this.CreateDatabaseStreamInternalAsync(
-                        diagnostics,
                         databaseProperties,
                         throughputProperties,
                         requestOptions,
+                        trace,
                         cancellationToken);
                 });
         }
 
         private async Task<DatabaseResponse> CreateDatabaseInternalAsync(
-            CosmosDiagnosticsContext diagnosticsContext,
             DatabaseProperties databaseProperties,
             ThroughputProperties throughputProperties,
             RequestOptions requestOptions,
+            ITrace trace,
             CancellationToken cancellationToken)
         {
             ResponseMessage response = await this.ClientContext.ProcessResourceOperationStreamAsync(
@@ -953,20 +971,20 @@ namespace Microsoft.Azure.Cosmos
                 operationType: OperationType.Create,
                 requestOptions: requestOptions,
                 cosmosContainerCore: null,
-                partitionKey: null,
+                feedRange: null,
                 streamPayload: this.ClientContext.SerializerCore.ToStream<DatabaseProperties>(databaseProperties),
                 requestEnricher: (httpRequestMessage) => httpRequestMessage.AddThroughputPropertiesHeader(throughputProperties),
-                diagnosticsContext: diagnosticsContext,
+                trace,
                 cancellationToken: cancellationToken);
 
             return this.ClientContext.ResponseFactory.CreateDatabaseResponse(this.GetDatabase(databaseProperties.Id), response);
         }
 
         private Task<ResponseMessage> CreateDatabaseStreamInternalAsync(
-            CosmosDiagnosticsContext diagnosticsContext,
             DatabaseProperties databaseProperties,
             ThroughputProperties throughputProperties,
             RequestOptions requestOptions,
+            ITrace trace,
             CancellationToken cancellationToken)
         {
             return this.ClientContext.ProcessResourceOperationAsync(
@@ -975,11 +993,11 @@ namespace Microsoft.Azure.Cosmos
                 operationType: OperationType.Create,
                 requestOptions: requestOptions,
                 containerInternal: null,
-                partitionKey: null,
+                feedRange: null,
                 streamPayload: this.ClientContext.SerializerCore.ToStream<DatabaseProperties>(databaseProperties),
                 requestEnricher: (httpRequestMessage) => httpRequestMessage.AddThroughputPropertiesHeader(throughputProperties),
                 responseCreator: (response) => response,
-                diagnosticsContext: diagnosticsContext,
+                trace: trace,
                 cancellationToken: cancellationToken);
         }
 

@@ -15,6 +15,7 @@ namespace Microsoft.Azure.Cosmos.Tests.Routing
     using Microsoft.Azure.Documents;
     using Microsoft.Azure.Documents.Collections;
     using Microsoft.Azure.Cosmos.Routing;
+    using Microsoft.Azure.Cosmos.Tracing;
 
     /// <summary>
     /// Tests for <see cref="PartitionRoutingHelper"/> class.
@@ -38,7 +39,7 @@ namespace Microsoft.Azure.Cosmos.Tests.Routing
         {
             Func<string, INameValueCollection> getHeadersWithContinuation = (string continuationToken) =>
             {
-                INameValueCollection headers = new DictionaryNameValueCollection();
+                INameValueCollection headers = new StoreRequestNameValueCollection();
                 headers[HttpConstants.HttpHeaders.Continuation] = continuationToken;
                 return headers;
             };
@@ -147,7 +148,7 @@ namespace Microsoft.Azure.Cosmos.Tests.Routing
         {
             Func<string, INameValueCollection> getHeadersWithContinuation = (string continuationToken) =>
             {
-                INameValueCollection localHeaders = new DictionaryNameValueCollection();
+                INameValueCollection localHeaders = new StoreRequestNameValueCollection();
                 if (continuationToken != null)
                 {
                     localHeaders[HttpConstants.HttpHeaders.Continuation] = continuationToken;
@@ -232,7 +233,7 @@ namespace Microsoft.Azure.Cosmos.Tests.Routing
                             RoutingMapProvider routingMapProvider = new RoutingMapProvider(routingMap);
                             PartitionRoutingHelper.ResolvedRangeInfo resolvedRangeInfo = await this.partitionRoutingHelper.TryGetTargetRangeFromContinuationTokenRangeAsync(testCase.ProvidedRanges, routingMapProvider, string.Empty, currentRange, null);
                             actualPartitionKeyRangeIds.Add(resolvedRangeInfo.ResolvedRange.Id);
-                            INameValueCollection headers = new DictionaryNameValueCollection();
+                            INameValueCollection headers = new StoreRequestNameValueCollection();
 
                             await this.partitionRoutingHelper.TryAddPartitionKeyRangeToContinuationTokenAsync(headers, testCase.ProvidedRanges, routingMapProvider, string.Empty, resolvedRangeInfo);
 
@@ -256,17 +257,26 @@ namespace Microsoft.Azure.Cosmos.Tests.Routing
                 this.collectionRoutingMap = collectionRoutingMap;
             }
 
-            public Task<IReadOnlyList<PartitionKeyRange>> TryGetOverlappingRangesAsync(string collectionResourceId, Range<string> range, bool forceRefresh = false)
+            public Task<IReadOnlyList<PartitionKeyRange>> TryGetOverlappingRangesAsync(
+                string collectionResourceId, 
+                Range<string> range, 
+                ITrace trace,
+                bool forceRefresh = false)
             {
                 return Task.FromResult(this.collectionRoutingMap.GetOverlappingRanges(range));
             }
 
-            public Task<PartitionKeyRange> TryGetPartitionKeyRangeByIdAsync(string collectionResourceId, string partitionKeyRangeId, bool forceRefresh = false)
+            public Task<PartitionKeyRange> TryGetPartitionKeyRangeByIdAsync(
+                string collectionResourceId, 
+                string partitionKeyRangeId, 
+                bool forceRefresh = false)
             {
                 return Task.FromResult(this.collectionRoutingMap.TryGetRangeByPartitionKeyRangeId(partitionKeyRangeId));
             }
 
-            public Task<PartitionKeyRange> TryGetRangeByEffectivePartitionKey(string collectionResourceId, string effectivePartitionKey)
+            public Task<PartitionKeyRange> TryGetRangeByEffectivePartitionKey(
+                string collectionResourceId, 
+                string effectivePartitionKey)
             {
                 return Task.FromResult(this.collectionRoutingMap.GetOverlappingRanges(Range<string>.GetPointRange(effectivePartitionKey)).Single());
             }

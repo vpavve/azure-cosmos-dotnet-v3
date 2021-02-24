@@ -16,6 +16,7 @@ namespace Microsoft.Azure.Cosmos.Routing
     using System.Threading.Tasks;
     using Microsoft.Azure.Cosmos.Common;
     using Microsoft.Azure.Cosmos.Core.Trace;
+    using Microsoft.Azure.Cosmos.Tracing;
     using Microsoft.Azure.Documents;
     using Microsoft.Azure.Documents.Client;
     using Microsoft.Azure.Documents.Collections;
@@ -388,10 +389,12 @@ namespace Microsoft.Azure.Cosmos.Routing
             bool forceRefresh,
             bool useMasterCollectionResolver)
         {
-            INameValueCollection addressQuery = new DictionaryNameValueCollection(StringComparer.Ordinal);
-            addressQuery.Add(HttpConstants.QueryStrings.Url, HttpUtility.UrlEncode(entryUrl));
+            INameValueCollection addressQuery = new StoreRequestNameValueCollection
+            {
+                { HttpConstants.QueryStrings.Url, HttpUtility.UrlEncode(entryUrl) }
+            };
 
-            INameValueCollection headers = new DictionaryNameValueCollection(StringComparer.Ordinal);
+            INameValueCollection headers = new StoreRequestNameValueCollection();
             if (forceRefresh)
             {
                 headers.Set(HttpConstants.HttpHeaders.ForceRefresh, bool.TrueString);
@@ -428,7 +431,8 @@ namespace Microsoft.Azure.Cosmos.Routing
                 uri: targetEndpoint,
                 additionalHeaders: headers,
                 resourceType: resourceType,
-                diagnosticsContext: null,
+                timeoutPolicy: HttpTimeoutPolicyControlPlaneRetriableHotPath.Instance,
+                trace: NoOpTrace.Singleton,
                 cancellationToken: default))
             {
                 using (DocumentServiceResponse documentServiceResponse =
@@ -448,10 +452,12 @@ namespace Microsoft.Azure.Cosmos.Routing
         {
             string entryUrl = PathsHelper.GeneratePath(ResourceType.Document, collectionRid, true);
 
-            INameValueCollection addressQuery = new DictionaryNameValueCollection();
-            addressQuery.Add(HttpConstants.QueryStrings.Url, HttpUtility.UrlEncode(entryUrl));
+            INameValueCollection addressQuery = new StoreRequestNameValueCollection
+            {
+                { HttpConstants.QueryStrings.Url, HttpUtility.UrlEncode(entryUrl) }
+            };
 
-            INameValueCollection headers = new DictionaryNameValueCollection();
+            INameValueCollection headers = new StoreRequestNameValueCollection();
             if (forceRefresh)
             {
                 headers.Set(HttpConstants.HttpHeaders.ForceRefresh, bool.TrueString);
@@ -503,7 +509,8 @@ namespace Microsoft.Azure.Cosmos.Routing
                 uri: targetEndpoint,
                 additionalHeaders: headers,
                 resourceType: ResourceType.Document,
-                diagnosticsContext: null,
+                timeoutPolicy: HttpTimeoutPolicyControlPlaneRetriableHotPath.Instance,
+                trace: NoOpTrace.Singleton,
                 cancellationToken: default))
             {
                 using (DocumentServiceResponse documentServiceResponse =
@@ -578,32 +585,22 @@ namespace Microsoft.Azure.Cosmos.Routing
 
         private static Protocol ProtocolFromString(string protocol)
         {
-            switch (protocol.ToLowerInvariant())
+            return (protocol.ToLowerInvariant()) switch
             {
-                case RuntimeConstants.Protocols.HTTPS:
-                    return Protocol.Https;
-
-                case RuntimeConstants.Protocols.RNTBD:
-                    return Protocol.Tcp;
-
-                default:
-                    throw new ArgumentOutOfRangeException("protocol");
-            }
+                RuntimeConstants.Protocols.HTTPS => Protocol.Https,
+                RuntimeConstants.Protocols.RNTBD => Protocol.Tcp,
+                _ => throw new ArgumentOutOfRangeException("protocol"),
+            };
         }
 
         private static string ProtocolString(Protocol protocol)
         {
-            switch ((int)protocol)
+            return ((int)protocol) switch
             {
-                case (int)Protocol.Https:
-                    return RuntimeConstants.Protocols.HTTPS;
-
-                case (int)Protocol.Tcp:
-                    return RuntimeConstants.Protocols.RNTBD;
-
-                default:
-                    throw new ArgumentOutOfRangeException("protocol");
-            }
+                (int)Protocol.Https => RuntimeConstants.Protocols.HTTPS,
+                (int)Protocol.Tcp => RuntimeConstants.Protocols.RNTBD,
+                _ => throw new ArgumentOutOfRangeException("protocol"),
+            };
         }
     }
 }

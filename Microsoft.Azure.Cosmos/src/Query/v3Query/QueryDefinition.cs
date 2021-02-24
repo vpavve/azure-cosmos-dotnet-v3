@@ -5,16 +5,20 @@
 namespace Microsoft.Azure.Cosmos
 {
     using System;
+    using System.Collections;
     using System.Collections.Generic;
-    using System.Collections.ObjectModel;
     using Microsoft.Azure.Cosmos.Query.Core;
+    using Newtonsoft.Json;
 
     /// <summary>
     /// Defines a Cosmos SQL query
     /// </summary>
     public class QueryDefinition
     {
-        private Dictionary<string, SqlParameter> SqlParameters { get; }
+        [JsonProperty(PropertyName = "parameters", NullValueHandling = NullValueHandling.Ignore, Order = 1)]
+        private List<SqlParameter> parameters { get; set; }
+
+        private ParametersListAdapter parametersAdapter;
 
         /// <summary>
         /// Create a <see cref="QueryDefinition"/>
@@ -37,28 +41,29 @@ namespace Microsoft.Azure.Cosmos
             }
 
             this.QueryText = query;
-            this.SqlParameters = new Dictionary<string, SqlParameter>();
         }
 
         /// <summary>
         /// Gets the text of the Azure Cosmos DB SQL query.
         /// </summary>
         /// <value>The text of the SQL query.</value>
+        [JsonProperty(PropertyName = "query", Order = 0)]
         public string QueryText { get; }
 
-        internal QueryDefinition(SqlQuerySpec sqlQuery)
+        internal static QueryDefinition CreateFromQuerySpec(SqlQuerySpec sqlQuery)
         {
             if (sqlQuery == null)
             {
                 throw new ArgumentNullException(nameof(sqlQuery));
             }
 
-            this.QueryText = sqlQuery.QueryText;
-            this.SqlParameters = new Dictionary<string, SqlParameter>();
+            QueryDefinition queryDefinition = new QueryDefinition(sqlQuery.QueryText);
             foreach (SqlParameter sqlParameter in sqlQuery.Parameters)
             {
-                this.SqlParameters.Add(sqlParameter.Name, sqlParameter);
+                queryDefinition = queryDefinition.WithParameter(sqlParameter.Name, sqlParameter.Value);
             }
+
+            return queryDefinition;
         }
 
         /// <summary>
@@ -86,23 +91,76 @@ namespace Microsoft.Azure.Cosmos
                 throw new ArgumentNullException(nameof(name));
             }
 
-            this.SqlParameters[name] = new SqlParameter(name, value);
+            if (this.parameters == null)
+            {
+                this.parameters = new List<SqlParameter>();
+            }
+
+            // Required to maintain previous contract when backed by a dictionary.
+            int index = this.parameters.FindIndex(param => param.Name == name);
+            if (index != -1)
+            {
+                this.parameters.RemoveAt(index);
+            }
+
+            this.parameters.Add(new SqlParameter(name, value));
+
             return this;
+        }
+
+        /// <summary>
+        /// Returns the names and values of parameters in this <see cref="QueryDefinition"/>.
+        /// </summary>
+        /// <returns>
+        /// A list of name/value tuples representing the parameters of this <see cref="QueryDefinition"/>.
+        /// </returns>
+        public IReadOnlyList<(string Name, object Value)> GetQueryParameters()
+        {
+            return this.parametersAdapter ??= new ParametersListAdapter(this);
         }
 
         internal SqlQuerySpec ToSqlQuerySpec()
         {
-            return new SqlQuerySpec(this.QueryText, new SqlParameterCollection(this.SqlParameters.Values));
+            return new SqlQuerySpec(this.QueryText, new SqlParameterCollection(this.parameters ?? (IReadOnlyList<SqlParameter>)Array.Empty<SqlParameter>()));
         }
 
         /// <summary>
         /// Gets the sql parameters for the class
         /// </summary>
-        internal IReadOnlyDictionary<string, SqlParameter> Parameters
+        [JsonIgnore]
+        internal IReadOnlyList<SqlParameter> Parameters => this.parameters ?? (IReadOnlyList<SqlParameter>)Array.Empty<SqlParameter>();
+
+        private class ParametersListAdapter : IReadOnlyList<(string Name, object Value)>
         {
-            get
+            private readonly QueryDefinition queryDefinition;
+
+            public ParametersListAdapter(QueryDefinition queryDefinition)
             {
-                return this.SqlParameters;
+                this.queryDefinition = queryDefinition;
+            }
+
+            public (string Name, object Value) this[int index]
+            {
+                get
+                {
+                    SqlParameter param = this.queryDefinition.Parameters[index];
+                    return (param.Name, param.Value);
+                }
+            }
+
+            public int Count => this.queryDefinition.Parameters.Count;
+
+            public IEnumerator<(string Name, object Value)> GetEnumerator()
+            {
+                foreach (SqlParameter param in this.queryDefinition.Parameters)
+                {
+                    yield return (param.Name, param.Value);
+                }
+            }
+
+            IEnumerator IEnumerable.GetEnumerator()
+            {
+                return this.GetEnumerator();
             }
         }
     }
