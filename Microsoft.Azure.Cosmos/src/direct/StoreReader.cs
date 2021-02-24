@@ -428,8 +428,10 @@ namespace Microsoft.Azure.Documents
                 case OperationType.Query:
                 case OperationType.SqlQuery:
                 case OperationType.ExecuteJavaScript:
-                {
-                    return await StoreReader.CompleteActivity(this.transportClient.InvokeResourceOperationAsync(
+                case OperationType.BatchApply:
+                case OperationType.Batch:
+                    {
+                        return await StoreReader.CompleteActivity(this.transportClient.InvokeResourceOperationAsync(
                         physicalAddress,
                         request),
                         activity);
