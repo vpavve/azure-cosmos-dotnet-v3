@@ -223,7 +223,7 @@ namespace Microsoft.Azure.Cosmos
             }
         }
 
-        private async Task<string> ResolvePartitionKeyRangeIdAsync(
+        internal async Task<string> ResolvePartitionKeyRangeIdAsync(
             ItemBatchOperation operation,
             CancellationToken cancellationToken)
         {

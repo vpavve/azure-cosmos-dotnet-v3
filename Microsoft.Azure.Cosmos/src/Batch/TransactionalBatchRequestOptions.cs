@@ -62,6 +62,11 @@ namespace Microsoft.Azure.Cosmos
         }
 
         /// <summary>
+        /// Use query for execution (HACK)
+        /// </summary>
+        public bool UseQuery { get; set; }
+
+        /// <summary>
         /// Fill the CosmosRequestMessage headers with the set properties
         /// </summary>
         /// <param name="request">The <see cref="RequestMessage"/></param>

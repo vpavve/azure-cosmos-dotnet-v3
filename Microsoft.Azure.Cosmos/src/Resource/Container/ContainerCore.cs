@@ -8,6 +8,7 @@ namespace Microsoft.Azure.Cosmos
     using System.Collections.Generic;
     using System.IO;
     using System.Net;
+    using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
     using System.Xml.XPath;
@@ -124,6 +125,103 @@ namespace Microsoft.Azure.Cosmos
            ItemOperation[] batchOperations,
            TransactionalBatchRequestOptions requestOptions, // TODO:
            CancellationToken cancellationToken = default)
+        {
+            if (requestOptions?.UseQuery == true)
+            {
+                // Use query path 
+                return await this.QueryExecuteAsync(trace, batchOperations, cancellationToken);
+            }
+
+            return await this.BatchExecuteAsync(trace, batchOperations, cancellationToken);
+        }
+
+        private async Task<Tuple<CosmosDiagnostics, TransactionalBatchOperationResult[]>> QueryExecuteAsync(
+            ITrace trace, 
+            ItemOperation[] batchOperations, 
+            CancellationToken cancellationToken)
+        {
+            CosmosDiagnostics diagnostics = new CosmosTraceDiagnostics(trace);
+            Dictionary<string, StringBuilder> pkrangeIdMapping = new Dictionary<string, StringBuilder>();
+
+            PartitionKeyDefinition partitionKeyDefinition = await this.GetPartitionKeyDefinitionAsync(cancellationToken);
+            string pkPath = partitionKeyDefinition.Paths[0].TrimStart(new char[] { '/' });
+            using (BatchAsyncContainerExecutor executor = new BatchAsyncContainerExecutor(
+                    this,
+                    this.ClientContext,
+                    Constants.MaxOperationsInDirectModeBatchRequest,
+                    BatchAsyncContainerExecutorCache.DefaultMaxBulkRequestBodySizeInBytes))
+            {
+                for (int i = 0; i < batchOperations.Length; i++)
+                {
+                    ItemOperation operation = batchOperations[i];
+
+                    ItemBatchOperation itemBatchOperation = new ItemBatchOperation(
+                        operationType: operation.OperationType,
+                        operationIndex: 0,
+                        partitionKey: operation.PartitionKey,
+                        id: operation.Id,
+                        resourceStream: null,
+                        requestOptions: null,
+                        cosmosClientContext: this.ClientContext);
+
+                    string pkRangeId = await executor.ResolvePartitionKeyRangeIdAsync(itemBatchOperation, cancellationToken);
+                    if (!pkrangeIdMapping.TryGetValue(pkRangeId, out StringBuilder builder))
+                    {
+                        StringBuilder query = new StringBuilder(5 * 1024);
+                        query.Append("select * from c ");
+                        query.Append($" where (c.{pkPath}={operation.PartitionKey.ToString().Trim(new char[] { '[', ']' })} and c.id = \"{operation.Id}\") ");
+
+                        pkrangeIdMapping[pkRangeId] = query;
+                    }
+                    else
+                    {
+                        builder.Append($" or (c.{pkPath}={operation.PartitionKey.ToString().Trim(new char[] { '[', ']' })} and c.id = \"{operation.Id}\") ");
+                    }
+                }
+            }
+
+            // For benchmark testing shoot all query execution in parallel (Batch has default 50)
+            // Also query is submitted to the down stream directly 
+            List<Task<ResponseMessage>> concurrentQueries = new List<Task<ResponseMessage>>();
+            foreach (KeyValuePair<string, StringBuilder> entry in pkrangeIdMapping)
+            {
+                Task<ResponseMessage> executeTask = this.ClientContext.ProcessResourceOperationStreamAsync(
+                    this.LinkUri,
+                    ResourceType.Document,
+                    OperationType.Query,
+                    new QueryRequestOptions(),
+                    cosmosContainerCore: this,
+                    feedRange: null,
+                    streamPayload: this.ClientContext.SerializerCore.ToStreamSqlQuerySpec(new Query.Core.SqlQuerySpec(entry.Value.ToString()), ResourceType.Document),
+                    requestEnricher: requestMessage => 
+                    { 
+                        requestMessage.Headers.PartitionKeyRangeId = entry.Key;
+                        requestMessage.Headers.ContentType = "application/query+json";
+                        requestMessage.Headers["x-ms-version"] = "2018-12-31";
+                        requestMessage.Headers["x-ms-documentdb-isquery"] = "true";
+                    },
+                    trace: trace,
+                    cancellationToken: cancellationToken);
+
+                concurrentQueries.Add(executeTask);
+            }
+
+            await Task.WhenAll(concurrentQueries);
+            foreach (Task<ResponseMessage> responseTask in concurrentQueries)
+            {
+                if (responseTask.Result.StatusCode != HttpStatusCode.OK)
+                {
+                    throw new Exception($"Unexpected failure {responseTask.Result}");
+                }
+            }
+
+            return new Tuple<CosmosDiagnostics, TransactionalBatchOperationResult[]>(diagnostics, new TransactionalBatchOperationResult[0]);
+        }
+
+        private async Task<Tuple<CosmosDiagnostics, TransactionalBatchOperationResult[]>> BatchExecuteAsync(
+            ITrace trace, 
+            ItemOperation[] batchOperations, 
+            CancellationToken cancellationToken)
         {
             CosmosDiagnostics diagnostics = new CosmosTraceDiagnostics(trace);
             ItemBatchOperation[] itemBatchOperations = new ItemBatchOperation[batchOperations.Length];

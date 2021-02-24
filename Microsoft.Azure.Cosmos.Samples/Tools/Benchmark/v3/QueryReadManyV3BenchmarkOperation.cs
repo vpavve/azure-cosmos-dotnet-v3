@@ -36,37 +36,26 @@ namespace CosmosBenchmark
 
         public async Task<OperationResult> ExecuteOnceAsync()
         {
-            StringBuilder query = new StringBuilder(5*1024);
-            query.Append("select * from c where ");
-
-            int i=0;
             int count = 100;
 
-            do
+            ItemOperation[] itemOperations = new ItemOperation[count];
+            for (int i = 0; i < count; i++)
             {
-                query.Append($" (c.{this.partitionKeyPath}=\"{Guid.NewGuid()}\" and c.id = \"{Guid.NewGuid()}\") ");
-                i++;
-
-                if (i < count)
-                {
-                    query.Append(" or " );
-                }
-
+                itemOperations[i] = ItemOperation.Read(
+                    new PartitionKey(Guid.NewGuid().ToString()),
+                               Guid.NewGuid().ToString());
             }
-            while (i < count);
 
-            FeedIterator feedIterator = this.container.GetItemQueryStreamIterator(
-                        new QueryDefinition(query.ToString()),
-                        null,
-                        null);
+            Tuple<CosmosDiagnostics, TransactionalBatchOperationResult[]> manyResults = await this.container.ExecuteManyAsync(
+                        itemOperations,
+                        new TransactionalBatchRequestOptions() { UseQuery = true },
+                        CancellationToken.None);
 
-            ResponseMessage responseMessage = null;
-            while (feedIterator.HasMoreResults) 
+            foreach (TransactionalBatchOperationResult result in manyResults.Item2)
             {
-                responseMessage = await feedIterator.ReadNextAsync();
-                if (responseMessage.StatusCode != System.Net.HttpStatusCode.OK)
+                if (result.StatusCode != System.Net.HttpStatusCode.NotFound)
                 {
-                    System.Console.WriteLine($"Got status code: {responseMessage.StatusCode}");
+                    System.Console.WriteLine($"Got status code: {result.StatusCode}");
                 }
             }
 
@@ -75,8 +64,8 @@ namespace CosmosBenchmark
                 DatabseName = databaseName,
                 ContainerName = containerName,
                 RuCharges = 0,
-                CosmosDiagnostics = responseMessage.Diagnostics,
-                LazyDiagnostics = () => responseMessage.Diagnostics.ToString(),
+                CosmosDiagnostics = manyResults.Item1,
+                LazyDiagnostics = () => manyResults.Item1.ToString(),
             };
         }
 
