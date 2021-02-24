@@ -236,6 +236,7 @@ namespace Microsoft.Azure.Documents
             Invalid = 0x00,
             ResourceId = 0x01,
             EffectivePartitionKey = 0x02,
+            EffectivePartitionKeyRange = 0x03,
         }
 
         public enum RntbdContentSerializationFormat : byte
