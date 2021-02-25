@@ -33,7 +33,12 @@ namespace CosmosBenchmark
             this.partitionKeyPath = partitionKeyPath.Replace("/", "");
         }
 
-        public async Task<OperationResult> ExecuteOnceAsync()
+        public virtual Task<OperationResult> ExecuteOnceAsync()
+        {
+            return this.ExecuteOnceAsyncInternal(useQuery: false);
+        }
+
+        public async Task<OperationResult> ExecuteOnceAsyncInternal(bool useQuery)
         {
             int count = 100;
             
@@ -47,7 +52,7 @@ namespace CosmosBenchmark
 
             Tuple<CosmosDiagnostics, TransactionalBatchOperationResult[]> manyResults = await this.container.ExecuteManyAsync(
                         itemOperations,
-                        null,
+                        new TransactionalBatchRequestOptions() { UseQuery = useQuery },
                         CancellationToken.None);
 
             foreach(TransactionalBatchOperationResult result in manyResults.Item2)
