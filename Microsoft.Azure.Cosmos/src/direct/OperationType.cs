@@ -146,8 +146,8 @@ namespace Microsoft.Azure.Documents
                    type == OperationType.Delete ||
                    type == OperationType.Replace ||
                    type == OperationType.ExecuteJavaScript ||
-                   //type == OperationType.BatchApply ||
-                   //type == OperationType.Batch ||
+                   type == OperationType.BatchApply ||
+                   type == OperationType.Batch ||
                    type == OperationType.Upsert ||
                    type == OperationType.CompleteUserTransaction
 #if !COSMOSCLIENT
@@ -199,8 +199,8 @@ namespace Microsoft.Azure.Documents
                    type == OperationType.SqlQuery ||
                    type == OperationType.Head ||
                    type == OperationType.HeadFeed ||
-                   type == OperationType.BatchApply ||
-                   type == OperationType.Batch ||
+                   //type == OperationType.BatchApply ||
+                   //type == OperationType.Batch ||
                    type == OperationType.QueryPlan
 #if !COSMOSCLIENT
                    ||
