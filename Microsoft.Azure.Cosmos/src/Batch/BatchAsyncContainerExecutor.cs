@@ -289,12 +289,14 @@ namespace Microsoft.Azure.Cosmos
             {
                 return streamer;
             }
+
             BatchAsyncStreamer newStreamer = new BatchAsyncStreamer(
                 this.maxServerRequestOperationCount,
                 this.maxServerRequestBodyLength,
                 this.cosmosClientContext.SerializerCore,
                 this.ExecuteAsync,
-                this.ReBatchAsync);
+                this.ReBatchAsync,
+                this.cosmosClientContext);
 
             this.streamersByPartitionKeyRange[partitionKeyRangeId] = newStreamer;
             return newStreamer;
