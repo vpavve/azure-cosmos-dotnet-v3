@@ -169,13 +169,13 @@ namespace Microsoft.Azure.Cosmos
                     {
                         StringBuilder query = new StringBuilder(5 * 1024);
                         query.Append("select * from c ");
-                        query.Append($" where (c.{pkPath}={operation.PartitionKey.ToString().Trim(new char[] { '[', ']' })} and c.id = \"{operation.Id}\") ");
+                        query.Append($" where (c.{pkPath}={operation.RawPartitionKey} and c.id = \"{operation.Id}\") ");
 
                         pkrangeIdMapping[pkRangeId] = query;
                     }
                     else
                     {
-                        builder.Append($" or (c.{pkPath}={operation.PartitionKey.ToString().Trim(new char[] { '[', ']' })} and c.id = \"{operation.Id}\") ");
+                        builder.Append($" or (c.{pkPath}={operation.RawPartitionKey} and c.id = \"{operation.Id}\") ");
                     }
                 }
             }

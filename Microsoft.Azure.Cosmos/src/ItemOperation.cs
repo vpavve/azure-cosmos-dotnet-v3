@@ -19,6 +19,8 @@ namespace Microsoft.Azure.Cosmos
         /// </summary>
         public PartitionKey PartitionKey { get; set; }
 
+        public string RawPartitionKey { get; set; }
+
         /// <summary>
         /// Item identifier
         /// </summary>
@@ -32,12 +34,13 @@ namespace Microsoft.Azure.Cosmos
         /// <param name="partitionKey"></param>
         /// <param name="id"></param>
         /// <returns>ItemOperation</returns>
-        public static ItemOperation Read(PartitionKey partitionKey,
+        public static ItemOperation Read(string partitionKey,
             string id)
         {
             return new ItemOperation()
             {
-                PartitionKey = partitionKey,
+                PartitionKey = new PartitionKey(partitionKey),
+                RawPartitionKey = partitionKey,
                 Id = id,
                 OperationType = OperationType.Read,
             };
