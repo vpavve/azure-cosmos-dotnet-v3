@@ -169,13 +169,13 @@ namespace Microsoft.Azure.Cosmos
                     {
                         StringBuilder query = new StringBuilder(5 * 1024);
                         query.Append("select * from c ");
-                        query.Append($" where (c.{pkPath}={operation.RawPartitionKey} and c.id = \"{operation.Id}\") ");
+                        query.Append($" where (c.{pkPath}=\"{operation.RawPartitionKey}\" and c.id = \"{operation.Id}\") ");
 
                         pkrangeIdMapping[pkRangeId] = query;
                     }
                     else
                     {
-                        builder.Append($" or (c.{pkPath}={operation.RawPartitionKey} and c.id = \"{operation.Id}\") ");
+                        builder.Append($" or (c.{pkPath}=\"{operation.RawPartitionKey}\" and c.id = \"{operation.Id}\") ");
                     }
                 }
             }
@@ -256,7 +256,9 @@ namespace Microsoft.Azure.Cosmos
         }
 
         public async Task<int?> ReadThroughputAsync(
+#pragma warning disable IDE0060 // Remove unused parameter
             ITrace trace,
+#pragma warning restore IDE0060 // Remove unused parameter
             CancellationToken cancellationToken = default)
         {
             ThroughputResponse response = await this.ReadThroughputIfExistsAsync(null, cancellationToken);

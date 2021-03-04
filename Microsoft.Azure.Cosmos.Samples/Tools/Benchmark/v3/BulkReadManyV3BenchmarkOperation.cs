@@ -5,6 +5,8 @@
 namespace CosmosBenchmark
 {
     using System;
+    using System.Collections.Generic;
+    using System.IO;
     using System.Threading;
     using System.Threading.Tasks;
     using Microsoft.Azure.Cosmos;
@@ -16,6 +18,9 @@ namespace CosmosBenchmark
 
         private readonly string databaseName;
         private readonly string containerName;
+
+        private readonly ItemOperation[] operations = createInputOperations();
+        private readonly Dictionary<string, object> sampleJObject;
 
         public BulkReadManyV3BenchmarkOperation(
             CosmosClient cosmosClient,
@@ -31,6 +36,8 @@ namespace CosmosBenchmark
 
             this.container = cosmosClient.GetContainer(this.databaseName, this.containerName);
             this.partitionKeyPath = partitionKeyPath.Replace("/", "");
+
+            this.sampleJObject = JsonHelper.Deserialize<Dictionary<string, object>>(sampleJson);
         }
 
         public virtual Task<OperationResult> ExecuteOnceAsync()
@@ -40,24 +47,17 @@ namespace CosmosBenchmark
 
         public async Task<OperationResult> ExecuteOnceAsyncInternal(bool useQuery)
         {
-            int count = 100;
-            
-            ItemOperation[] itemOperations = new ItemOperation[count];
-            for (int i=0; i < count; i++)
-            {
-                itemOperations[i] = ItemOperation.Read(
-                    new PartitionKey(Guid.NewGuid().ToString()), 
-                               Guid.NewGuid().ToString());
-            }
+            // ItemOperation[] itemOperations = createInputOperations();
+            ItemOperation[] itemOperations = operations;
 
             Tuple<CosmosDiagnostics, TransactionalBatchOperationResult[]> manyResults = await this.container.ExecuteManyAsync(
                         itemOperations,
                         new TransactionalBatchRequestOptions() { UseQuery = useQuery },
                         CancellationToken.None);
 
-            foreach(TransactionalBatchOperationResult result in manyResults.Item2)
+            foreach (TransactionalBatchOperationResult result in manyResults.Item2)
             {
-                if (result.StatusCode != System.Net.HttpStatusCode.NotFound)
+                if (result.StatusCode != System.Net.HttpStatusCode.OK)
                 {
                     System.Console.WriteLine($"Got status code: {result.StatusCode}");
                 }
@@ -73,9 +73,36 @@ namespace CosmosBenchmark
             };
         }
 
-        public Task PrepareAsync()
+        private static ItemOperation[] createInputOperations()
         {
-            return Task.CompletedTask;
+            int count = 100;
+
+            ItemOperation[] itemOperations = new ItemOperation[count];
+            for (int i = 0; i < count; i++)
+            {
+                itemOperations[i] = ItemOperation.Read(
+                               Guid.NewGuid().ToString(),
+                               Guid.NewGuid().ToString());
+            }
+
+            return itemOperations;
+        }
+
+        public async Task PrepareAsync()
+        {
+            // return Task.CompletedTask;
+            foreach (ItemOperation op in operations)
+            {
+                this.sampleJObject["id"] = op.Id;
+                this.sampleJObject[this.partitionKeyPath] = op.RawPartitionKey;
+
+                using (MemoryStream input = JsonHelper.ToStream(this.sampleJObject))
+                {
+                    await this.container.CreateItemStreamAsync(
+                        input,
+                        new PartitionKey(this.sampleJObject[this.partitionKeyPath].ToString()));
+                }
+            }
         }
     }
 }
