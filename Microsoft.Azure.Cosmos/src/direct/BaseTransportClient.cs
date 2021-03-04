@@ -28,6 +28,7 @@ namespace Microsoft.Azure.Documents
         // Uses requests's ResourceOperation to determine the operation
         public virtual Task<StoreResponse> InvokeResourceOperationAsync(Uri physicalAddress, DocumentServiceRequest request)
         {
+            Console.WriteLine($"Invoking: {physicalAddress}");
             return this.InvokeStoreAsync(physicalAddress, new ResourceOperation(request.OperationType, request.ResourceType), request);
         }
 
