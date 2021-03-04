@@ -214,7 +214,7 @@ namespace Microsoft.Azure.Cosmos
                     throw new Exception($"Unexpected failure {responseTask.Result}");
                 }
 
-                Console.WriteLine($"ElapsedDuration: {responseTask.Result.Diagnostics.GetClientElapsedTime()}");
+                // Console.WriteLine($"ElapsedDuration: {responseTask.Result.Diagnostics.GetClientElapsedTime()}");
             }
 
             return new Tuple<CosmosDiagnostics, TransactionalBatchOperationResult[]>(diagnostics, new TransactionalBatchOperationResult[0]);
