@@ -27,14 +27,12 @@ namespace Microsoft.Azure.Cosmos
     internal class BatchAsyncContainerExecutor : IDisposable
     {
         internal const int TimerWheelBucketCount = 20;
-        internal static readonly TimeSpan TimerWheelResolution = TimeSpan.FromMilliseconds(50);
 
         private readonly ContainerInternal cosmosContainer;
         private readonly CosmosClientContext cosmosClientContext;
         private readonly int maxServerRequestBodyLength;
         private readonly int maxServerRequestOperationCount;
-        private readonly ConcurrentDictionary<string, BatchAsyncStreamer> streamersByPartitionKeyRange = new ConcurrentDictionary<string, BatchAsyncStreamer>();
-        private readonly ConcurrentDictionary<string, SemaphoreSlim> limitersByPartitionkeyRange = new ConcurrentDictionary<string, SemaphoreSlim>();
+        private readonly Dictionary<string, BatchAsyncStreamer> streamersByPartitionKeyRange = new Dictionary<string, BatchAsyncStreamer>();
         private readonly RetryOptions retryOptions;
         private readonly int defaultMaxDegreeOfConcurrency = 50;
 
@@ -131,11 +129,6 @@ namespace Microsoft.Azure.Cosmos
             foreach (KeyValuePair<string, BatchAsyncStreamer> streamer in this.streamersByPartitionKeyRange)
             {
                 streamer.Value.Dispose();
-            }
-
-            foreach (KeyValuePair<string, SemaphoreSlim> limiter in this.limitersByPartitionkeyRange)
-            {
-                limiter.Value.Dispose();
             }
         }
 
@@ -293,37 +286,16 @@ namespace Microsoft.Azure.Cosmos
             {
                 return streamer;
             }
-            SemaphoreSlim limiter = this.GetOrAddLimiterForPartitionKeyRange(partitionKeyRangeId);
             BatchAsyncStreamer newStreamer = new BatchAsyncStreamer(
                 this.maxServerRequestOperationCount,
                 this.maxServerRequestBodyLength,
-                limiter,
                 this.defaultMaxDegreeOfConcurrency,
                 this.cosmosClientContext.SerializerCore,
                 this.ExecuteAsync,
                 this.ReBatchAsync);
-            if (!this.streamersByPartitionKeyRange.TryAdd(partitionKeyRangeId, newStreamer))
-            {
-                newStreamer.Dispose();
-            }
 
-            return this.streamersByPartitionKeyRange[partitionKeyRangeId];
-        }
-
-        private SemaphoreSlim GetOrAddLimiterForPartitionKeyRange(string partitionKeyRangeId)
-        {
-            if (this.limitersByPartitionkeyRange.TryGetValue(partitionKeyRangeId, out SemaphoreSlim limiter))
-            {
-                return limiter;
-            }
-
-            SemaphoreSlim newLimiter = new SemaphoreSlim(1, this.defaultMaxDegreeOfConcurrency);
-            if (!this.limitersByPartitionkeyRange.TryAdd(partitionKeyRangeId, newLimiter))
-            {
-                newLimiter.Dispose();
-            }
-
-            return this.limitersByPartitionkeyRange[partitionKeyRangeId];
+            this.streamersByPartitionKeyRange[partitionKeyRangeId] = newStreamer;
+            return newStreamer;
         }
     }
 }

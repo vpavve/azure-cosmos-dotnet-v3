@@ -21,9 +21,6 @@ namespace Microsoft.Azure.Cosmos
     /// <seealso cref="BatchAsyncBatcher"/>
     internal class BatchAsyncStreamer : IDisposable
     {
-        private static readonly TimeSpan congestionControllerDelay = TimeSpan.FromMilliseconds(1000);
-        private static readonly TimeSpan batchTimeout = TimeSpan.FromMilliseconds(100);
-
         private readonly object dispatchLimiter = new object();
         private readonly int maxBatchOperationCount;
         private readonly int maxBatchByteSize;
@@ -32,28 +29,16 @@ namespace Microsoft.Azure.Cosmos
         private readonly CosmosSerializerCore serializerCore;
         private readonly CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
 
-        private readonly int congestionIncreaseFactor = 1;
-        private readonly int congestionDecreaseFactor = 5;
-        private readonly int maxDegreeOfConcurrency;
-        private static readonly TimerWheel timerWheel = TimerWheel.CreateTimerWheel(BatchAsyncContainerExecutor.TimerWheelResolution, BatchAsyncContainerExecutor.TimerWheelBucketCount);
-        private readonly SemaphoreSlim limiter;
-
         private readonly BatchPartitionMetric oldPartitionMetric;
         private readonly BatchPartitionMetric partitionMetric;
 
         private volatile BatchAsyncBatcher currentBatcher;
 
         private TimerWheelTimer congestionControlTimer;
-        private Task congestionControlTask;
-
-        private int congestionDegreeOfConcurrency = 1;
-        private long congestionWaitTimeInMilliseconds = 1000;
 
         public BatchAsyncStreamer(
             int maxBatchOperationCount,
             int maxBatchByteSize,
-            SemaphoreSlim limiter,
-            int maxDegreeOfConcurrency,
             CosmosSerializerCore serializerCore,
             BatchAsyncBatcherExecuteDelegate executor,
             BatchAsyncBatcherRetryDelegate retrier)
@@ -83,16 +68,6 @@ namespace Microsoft.Azure.Cosmos
                 throw new ArgumentNullException(nameof(serializerCore));
             }
 
-            if (limiter == null)
-            {
-                throw new ArgumentNullException(nameof(limiter));
-            }
-
-            if (maxDegreeOfConcurrency < 1)
-            {
-                throw new ArgumentNullException(nameof(maxDegreeOfConcurrency));
-            }
-
             this.maxBatchOperationCount = maxBatchOperationCount;
             this.maxBatchByteSize = maxBatchByteSize;
             this.executor = executor;
@@ -100,12 +75,8 @@ namespace Microsoft.Azure.Cosmos
             this.serializerCore = serializerCore;
             this.currentBatcher = this.CreateBatchAsyncBatcher();
 
-            this.limiter = limiter;
             this.oldPartitionMetric = new BatchPartitionMetric();
             this.partitionMetric = new BatchPartitionMetric();
-            this.maxDegreeOfConcurrency = maxDegreeOfConcurrency;
-
-            this.StartCongestionControlTimer();
         }
 
         public void Add(ItemBatchOperation operation)
@@ -153,17 +124,7 @@ namespace Microsoft.Azure.Cosmos
             {
                 this.congestionControlTimer.CancelTimer();
                 this.congestionControlTimer = null;
-                this.congestionControlTask = null;
             }
-        }
-
-        private void StartCongestionControlTimer()
-        {
-            this.congestionControlTimer = BatchAsyncStreamer.timerWheel.CreateTimer(BatchAsyncStreamer.congestionControllerDelay);
-            this.congestionControlTask = this.congestionControlTimer.StartTimerAsync().ContinueWith(async (task) =>
-            {
-                await this.RunCongestionControlAsync();
-            }, this.cancellationTokenSource.Token);
         }
 
         private BatchAsyncBatcher GetBatchToDispatchAndCreate()
@@ -181,54 +142,6 @@ namespace Microsoft.Azure.Cosmos
         private BatchAsyncBatcher CreateBatchAsyncBatcher()
         {
             return new BatchAsyncBatcher(this.maxBatchOperationCount, this.maxBatchByteSize, this.serializerCore, this.executor, this.retrier);
-        }
-
-        private async Task RunCongestionControlAsync()
-        {
-            while (!this.cancellationTokenSource.Token.IsCancellationRequested)
-            {
-                long elapsedTimeInMilliseconds = this.partitionMetric.TimeTakenInMilliseconds - this.oldPartitionMetric.TimeTakenInMilliseconds;
-
-                if (elapsedTimeInMilliseconds >= this.congestionWaitTimeInMilliseconds)
-                {
-                    long diffThrottle = this.partitionMetric.NumberOfThrottles - this.oldPartitionMetric.NumberOfThrottles;
-                    long changeItemsCount = this.partitionMetric.NumberOfItemsOperatedOn - this.oldPartitionMetric.NumberOfItemsOperatedOn;
-                    this.oldPartitionMetric.Add(changeItemsCount, elapsedTimeInMilliseconds, diffThrottle);
-
-                    if (diffThrottle > 0)
-                    {
-                        // Decrease should not lead to degreeOfConcurrency 0 as this will just block the thread here and no one would release it.
-                        int decreaseCount = Math.Min(this.congestionDecreaseFactor, this.congestionDegreeOfConcurrency / 2);
-
-                        // We got a throttle so we need to back off on the degree of concurrency.
-                        for (int i = 0; i < decreaseCount; i++)
-                        {
-                            await this.limiter.WaitAsync(this.cancellationTokenSource.Token);
-                        }
-
-                        this.congestionDegreeOfConcurrency -= decreaseCount;
-
-                        // In case of throttling increase the wait time, so as to converge max degreeOfConcurrency
-                        this.congestionWaitTimeInMilliseconds += 1000;
-                    }
-
-                    if (changeItemsCount > 0 && diffThrottle == 0)
-                    {
-                        if (this.congestionDegreeOfConcurrency + this.congestionIncreaseFactor <= this.maxDegreeOfConcurrency)
-                        {
-                            // We aren't getting throttles, so we should bump up the degree of concurrency.
-                            this.limiter.Release(this.congestionIncreaseFactor);
-                            this.congestionDegreeOfConcurrency += this.congestionIncreaseFactor;
-                        }
-                    }
-                }
-                else
-                {
-                    break;
-                }
-            }
-
-            this.StartCongestionControlTimer();
         }
     }
 }
