@@ -272,6 +272,8 @@ namespace Microsoft.Azure.Cosmos
                         trace,
                         cancellationToken).ConfigureAwait(false);
 
+                    Console.WriteLine($"ElapsedDuration: {serverResponse.Diagnostics.GetClientElapsedTime()}");
+
                     return new PartitionKeyRangeBatchExecutionResult(
                         serverRequest.PartitionKeyRangeId,
                         serverRequest.Operations,
