@@ -289,7 +289,6 @@ namespace Microsoft.Azure.Cosmos
             BatchAsyncStreamer newStreamer = new BatchAsyncStreamer(
                 this.maxServerRequestOperationCount,
                 this.maxServerRequestBodyLength,
-                this.defaultMaxDegreeOfConcurrency,
                 this.cosmosClientContext.SerializerCore,
                 this.ExecuteAsync,
                 this.ReBatchAsync);
