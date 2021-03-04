@@ -31,6 +31,7 @@ namespace Microsoft.Azure.Cosmos
 
         private readonly BatchPartitionMetric oldPartitionMetric;
         private readonly BatchPartitionMetric partitionMetric;
+        private readonly CosmosClientContext clientContext;
 
         private volatile BatchAsyncBatcher currentBatcher;
 
@@ -41,7 +42,8 @@ namespace Microsoft.Azure.Cosmos
             int maxBatchByteSize,
             CosmosSerializerCore serializerCore,
             BatchAsyncBatcherExecuteDelegate executor,
-            BatchAsyncBatcherRetryDelegate retrier)
+            BatchAsyncBatcherRetryDelegate retrier,
+            CosmosClientContext clientContext)
         {
             if (maxBatchOperationCount < 1)
             {
@@ -73,6 +75,7 @@ namespace Microsoft.Azure.Cosmos
             this.executor = executor;
             this.retrier = retrier;
             this.serializerCore = serializerCore;
+            this.clientContext = clientContext;
             this.currentBatcher = this.CreateBatchAsyncBatcher();
 
             this.oldPartitionMetric = new BatchPartitionMetric();
@@ -141,7 +144,7 @@ namespace Microsoft.Azure.Cosmos
 
         private BatchAsyncBatcher CreateBatchAsyncBatcher()
         {
-            return new BatchAsyncBatcher(this.maxBatchOperationCount, this.maxBatchByteSize, this.serializerCore, this.executor, this.retrier);
+            return new BatchAsyncBatcher(this.maxBatchOperationCount, this.maxBatchByteSize, this.serializerCore, this.executor, this.retrier, this.clientContext);
         }
     }
 }

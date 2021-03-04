@@ -423,6 +423,7 @@ namespace Microsoft.Azure.Cosmos
                 {
                     throw CosmosExceptionFactory.CreateInternalServerErrorException(
                         $"Container rid {containerRId} did not have a partition key range after refresh",
+                        headers: new Headers(),
                         trace: trace);
                 }
 
@@ -436,6 +437,7 @@ namespace Microsoft.Azure.Cosmos
                 {
                     throw CosmosExceptionFactory.CreateInternalServerErrorException(
                         $"Container rid {containerRId} returned partitionKeyRanges null after Container RID refresh",
+                        headers: new Headers(),
                         trace: trace);
                 }
             }
@@ -474,7 +476,8 @@ namespace Microsoft.Azure.Cosmos
                 documentContainer: documentContainer,
                 changeFeedStartFrom: changeFeedStartFrom,
                 changeFeedMode: changeFeedMode,
-                changeFeedRequestOptions: changeFeedRequestOptions);
+                changeFeedRequestOptions: changeFeedRequestOptions,
+                clientContext: this.ClientContext);
         }
 
         public override FeedIterator<T> GetChangeFeedIterator<T>(
@@ -502,7 +505,8 @@ namespace Microsoft.Azure.Cosmos
                 documentContainer: documentContainer,
                 changeFeedStartFrom: changeFeedStartFrom,
                 changeFeedMode: changeFeedMode,
-                changeFeedRequestOptions: changeFeedRequestOptions);
+                changeFeedRequestOptions: changeFeedRequestOptions,
+                clientContext: this.ClientContext);
 
             return new FeedIteratorCore<T>(
                 changeFeedIteratorCore,
