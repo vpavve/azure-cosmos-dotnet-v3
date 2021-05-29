@@ -78,7 +78,9 @@ namespace Microsoft.Azure.Cosmos
         internal Stream ToStream<T>(T input)
         {
             CosmosSerializer serializer = this.GetSerializer<T>();
-            return serializer.ToStream<T>(input);
+            Stream stream = serializer.ToStream<T>(input);
+
+            return stream;
         }
 
         internal Stream ToStreamSqlQuerySpec(SqlQuerySpec input, ResourceType resourceType)

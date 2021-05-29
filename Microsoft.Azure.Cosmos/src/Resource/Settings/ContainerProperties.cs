@@ -619,7 +619,7 @@ namespace Microsoft.Azure.Cosmos
         /// </remarks>
         [JsonProperty(PropertyName = Constants.Properties.RId, NullValueHandling = NullValueHandling.Ignore)]
 
-        internal string ResourceId { get; private set; }
+        public string ResourceId { get; private set; }
 
         internal bool HasPartitionKey => this.PartitionKey != null;
 

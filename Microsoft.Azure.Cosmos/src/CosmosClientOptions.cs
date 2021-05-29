@@ -94,6 +94,11 @@ namespace Microsoft.Azure.Cosmos
         public string ApplicationName { get; set; }
 
         /// <summary>
+        /// StreamEncoder
+        /// </summary>
+        public CosmosStreamEncoder StreamEncoder { get; set; }
+
+        /// <summary>
         /// Get or set session container for the client
         /// </summary>
         internal ISessionContainer SessionContainer { get; set; }

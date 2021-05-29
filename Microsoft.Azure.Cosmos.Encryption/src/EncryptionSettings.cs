@@ -16,9 +16,9 @@ namespace Microsoft.Azure.Cosmos.Encryption
     internal sealed class EncryptionSettings
     {
         // TODO: Good to have constants available in the Cosmos SDK. Tracked via https://github.com/Azure/azure-cosmos-dotnet-v3/issues/2431
-        private const string IntendedCollectionHeader = "x-ms-cosmos-intended-collection-rid";
+        internal const string IntendedCollectionHeader = "x-ms-cosmos-intended-collection-rid";
 
-        private const string IsClientEncryptedHeader = "x-ms-cosmos-is-client-encrypted";
+        internal const string IsClientEncryptedHeader = "x-ms-cosmos-is-client-encrypted";
 
         private readonly Dictionary<string, EncryptionSettingForProperty> encryptionSettingsDictByPropertyName;
 

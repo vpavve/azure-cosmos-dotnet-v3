@@ -38,6 +38,20 @@ namespace Microsoft.Azure.Cosmos.Encryption
             String = 5,
         }
 
+        public static Task<Stream> EncryptAsync(
+            Stream input,
+            EncryptionSettings encryptionSettings,
+#pragma warning disable IDE0060 // Remove unused parameter
+            CosmosDiagnosticsContext diagnosticsContext,
+#pragma warning restore IDE0060 // Remove unused parameter
+            CancellationToken cancellationToken)
+        {
+            return EncryptionProcessor.EncryptAsync(
+                input,
+                encryptionSettings,
+                cancellationToken);
+        }
+
         /// <remarks>
         /// If there isn't any PathsToEncrypt, input stream will be returned without any modification.
         /// Else input stream will be disposed, and a new stream is returned.
@@ -46,15 +60,12 @@ namespace Microsoft.Azure.Cosmos.Encryption
         public static async Task<Stream> EncryptAsync(
             Stream input,
             EncryptionSettings encryptionSettings,
-            CosmosDiagnosticsContext diagnosticsContext,
             CancellationToken cancellationToken)
         {
             if (input == null)
             {
                 throw new ArgumentNullException(nameof(input));
             }
-
-            Debug.Assert(diagnosticsContext != null);
 
             JObject itemJObj = EncryptionProcessor.BaseSerializer.FromStream<JObject>(input);
 
@@ -84,6 +95,20 @@ namespace Microsoft.Azure.Cosmos.Encryption
             return EncryptionProcessor.BaseSerializer.ToStream(itemJObj);
         }
 
+        public static Task<Stream> DecryptAsync(
+            Stream input,
+            EncryptionSettings encryptionSettings,
+#pragma warning disable IDE0060 // Remove unused parameter
+            CosmosDiagnosticsContext diagnosticsContext,
+#pragma warning restore IDE0060 // Remove unused parameter
+            CancellationToken cancellationToken)
+        {
+            return EncryptionProcessor.DecryptAsync(
+                input,
+                encryptionSettings,
+                cancellationToken);
+        }
+
         /// <remarks>
         /// If there isn't any data that needs to be decrypted, input stream will be returned without any modification.
         /// Else input stream will be disposed, and a new stream is returned.
@@ -92,7 +117,6 @@ namespace Microsoft.Azure.Cosmos.Encryption
         public static async Task<Stream> DecryptAsync(
             Stream input,
             EncryptionSettings encryptionSettings,
-            CosmosDiagnosticsContext diagnosticsContext,
             CancellationToken cancellationToken)
         {
             if (input == null)
@@ -101,14 +125,12 @@ namespace Microsoft.Azure.Cosmos.Encryption
             }
 
             Debug.Assert(input.CanSeek);
-            Debug.Assert(diagnosticsContext != null);
 
             JObject itemJObj = RetrieveItem(input);
 
             await DecryptObjectAsync(
                 itemJObj,
                 encryptionSettings,
-                diagnosticsContext,
                 cancellationToken);
 
             input.Dispose();
@@ -125,7 +147,6 @@ namespace Microsoft.Azure.Cosmos.Encryption
             await DecryptObjectAsync(
                 document,
                 encryptionSettings,
-                CosmosDiagnosticsContext.Create(null),
                 cancellationToken);
 
             return document;
@@ -320,11 +341,8 @@ namespace Microsoft.Azure.Cosmos.Encryption
         private static async Task DecryptObjectAsync(
             JObject document,
             EncryptionSettings encryptionSettings,
-            CosmosDiagnosticsContext diagnosticsContext,
             CancellationToken cancellationToken)
         {
-            Debug.Assert(diagnosticsContext != null);
-
             foreach (string propertyName in encryptionSettings.PropertiesToEncrypt)
             {
                 JProperty propertyToDecrypt = document.Property(propertyName);

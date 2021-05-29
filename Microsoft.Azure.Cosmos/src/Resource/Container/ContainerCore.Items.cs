@@ -10,6 +10,7 @@ namespace Microsoft.Azure.Cosmos
     using System.Globalization;
     using System.IO;
     using System.Linq;
+    using System.Net;
     using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
@@ -933,56 +934,116 @@ namespace Microsoft.Azure.Cosmos
                 itemStream = this.ClientContext.SerializerCore.ToStream<T>(item);
             }
 
-            // User specified PK value, no need to extract it
-            if (partitionKey.HasValue)
-            {
-                PartitionKeyDefinition pKeyDefinition = await this.GetPartitionKeyDefinitionAsync();
-                if (partitionKey.HasValue && partitionKey.Value != PartitionKey.None && partitionKey.Value.InternalKey.Components.Count != pKeyDefinition.Paths.Count)
-                {
-                    throw new ArgumentException(RMResources.MissingPartitionKeyValue);
-                }
-
-                return await this.ProcessItemStreamAsync(
-                        partitionKey,
-                        itemId,
-                        itemStream,
-                        operationType,
-                        requestOptions,
-                        trace: trace,
-                        cancellationToken: cancellationToken);
-            }
-
-            PartitionKeyMismatchRetryPolicy requestRetryPolicy = null;
+            IDocumentClientRetryPolicy requestRetryPolicy = null;
             while (true)
             {
-                partitionKey = await this.GetPartitionKeyValueFromStreamAsync(itemStream, trace, cancellationToken);
+                bool isPartitionKeyExtracted = false;
+                // User specified PK value, no need to extract it
+                if (partitionKey.HasValue)
+                {
+                    PartitionKeyDefinition pKeyDefinition = await this.GetPartitionKeyDefinitionAsync();
+                    if (partitionKey.HasValue && partitionKey.Value != PartitionKey.None && partitionKey.Value.InternalKey.Components.Count != pKeyDefinition.Paths.Count)
+                    {
+                        throw new ArgumentException(RMResources.MissingPartitionKeyValue);
+                    }
+                }
+                else
+                {
+                    partitionKey = await this.GetPartitionKeyValueFromStreamAsync(itemStream, trace, cancellationToken);
+                    isPartitionKeyExtracted = true;
+                }
+
+                // Use one single ContainerProperties consistently for each execution
+                // Reload might cause in-consistencies
+                ContainerProperties cachedContainerProperties = null;
+                if (this.ClientContext.ClientOptions.StreamEncoder != null)
+                {
+                    // TODO: Do trace handle multiple StartChild on retry
+                    using (trace.StartChild("ItemEncoder"))
+                    {
+                        // Client might be starting possible stale caches data 
+                        // Underlying retry policy will refresh
+                        cachedContainerProperties = await this.GetCachedContainerPropertiesAsync(
+                            forceRefresh: false,
+                            trace: NoOpTrace.Singleton,
+                            cancellationToken: cancellationToken);
+
+                        itemStream = await this.ClientContext.ClientOptions.StreamEncoder.EncodeAsync(
+                                itemStream, 
+                                cachedContainerProperties, 
+                                null, 
+                                cancellationToken);
+                    }
+                }
 
                 ResponseMessage responseMessage = await this.ProcessItemStreamAsync(
-                    partitionKey,
-                    itemId,
-                    itemStream,
-                    operationType,
-                    requestOptions,
-                    trace: trace,
-                    cancellationToken: cancellationToken);
+                            partitionKey,
+                            itemId,
+                            itemStream,
+                            operationType,
+                            requestOptions,
+                            trace: trace,
+                            cancellationToken: cancellationToken);
 
-                if (responseMessage.IsSuccessStatusCode)
+                // Optimization: fallbck retry policies are ONLY applicable for BadReqeust
+                if (responseMessage.StatusCode == HttpStatusCode.BadRequest)
                 {
-                    return responseMessage;
+                    if (requestRetryPolicy == null)
+                    {
+                        if (this.ClientContext.ClientOptions.StreamEncoder != null)
+                        {
+                            Debug.Assert(cachedContainerProperties != null);
+
+                            requestRetryPolicy = new EncryptionMisMatchRetryPolicy(
+                                await this.ClientContext.DocumentClient.GetCollectionCacheAsync(trace),
+                                cachedContainerProperties,
+                                requestRetryPolicy);
+                        }
+
+                        if (isPartitionKeyExtracted)
+                        {
+                            requestRetryPolicy = new PartitionKeyMismatchRetryPolicy(
+                                await this.ClientContext.DocumentClient.GetCollectionCacheAsync(trace),
+                                requestRetryPolicy);
+                        }
+                    }
+
+                    ShouldRetryResult retryResult = await requestRetryPolicy.ShouldRetryAsync(responseMessage, cancellationToken);
+                    if (retryResult.ShouldRetry)
+                    {
+                        if (this.ClientContext.ClientOptions.StreamEncoder != null)
+                        {
+                            // Decode input/reqeust for retry
+                            using (trace.StartChild("ItemDecoder"))
+                            {
+                                itemStream.Position = 0;
+                                itemStream = await this.ClientContext.ClientOptions.StreamEncoder.DecodeAsync(
+                                        itemStream,
+                                        cachedContainerProperties,
+                                        null,
+                                        cancellationToken);
+                            }
+                        }
+
+                        continue;
+                    }
                 }
 
-                if (requestRetryPolicy == null)
+                if (this.ClientContext.ClientOptions.StreamEncoder != null)
                 {
-                    requestRetryPolicy = new PartitionKeyMismatchRetryPolicy(
-                        await this.ClientContext.DocumentClient.GetCollectionCacheAsync(trace),
-                        requestRetryPolicy);
+                    // Decode response
+                    using (trace.StartChild("ItemDecoder"))
+                    {
+                        Stream encodedContentStream = responseMessage.Content;
+                        responseMessage.Content = await this.ClientContext.ClientOptions.StreamEncoder.DecodeAsync(
+                                encodedContentStream,
+                                cachedContainerProperties,
+                                null,
+                                cancellationToken);
+                    }
                 }
 
-                ShouldRetryResult retryResult = await requestRetryPolicy.ShouldRetryAsync(responseMessage, cancellationToken);
-                if (!retryResult.ShouldRetry)
-                {
-                    return responseMessage;
-                }
+                return responseMessage; 
             }
         }
 
