@@ -26,11 +26,6 @@ namespace Microsoft.Azure.Cosmos.Encryption
 
         public IEnumerable<string> PropertiesToEncrypt { get; }
 
-        public static Task<EncryptionSettings> CreateAsync(EncryptionContainer encryptionContainer, CancellationToken cancellationToken)
-        {
-            return InitializeEncryptionSettingsAsync(encryptionContainer, cancellationToken);
-        }
-
         public EncryptionSettingForProperty GetEncryptionSettingForProperty(string propertyName)
         {
             this.encryptionSettingsDictByPropertyName.TryGetValue(propertyName, out EncryptionSettingForProperty encryptionSettingsForProperty);
@@ -64,23 +59,24 @@ namespace Microsoft.Azure.Cosmos.Encryption
             };
         }
 
-        private static async Task<EncryptionSettings> InitializeEncryptionSettingsAsync(EncryptionContainer encryptionContainer, CancellationToken cancellationToken)
+        public static async Task<EncryptionSettings> CreateAsync(
+            ContainerProperties containerProperties,
+            IEncryptionKeyCache encryptionKeyCache,
+            EncryptionKeyStoreProvider encryptionKeyStoreProvider,
+            CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            ContainerResponse containerResponse = await encryptionContainer.ReadContainerAsync();
-
-            Debug.Assert(containerResponse.StatusCode == HttpStatusCode.OK, "ReadContainerAsync request has failed as part of InitializeEncryptionSettingsAsync operation. ");
-            Debug.Assert(containerResponse.Resource != null, "Null resource received in ContainerResponse as part of InitializeEncryptionSettingsAsync operation. ");
+            Debug.Assert(containerProperties != null, "ReadContainerAsync request has failed as part of InitializeEncryptionSettingsAsync operation. ");
 
             // set the Database Rid.
-            string databaseRidValue = containerResponse.Resource.SelfLink.Split('/').ElementAt(1);
+            string databaseRidValue = containerProperties.SelfLink.Split('/').ElementAt(1);
 
             // set the Container Rid.
-            string containerRidValue = containerResponse.Resource.SelfLink.Split('/').ElementAt(3);
+            string containerRidValue = containerProperties.SelfLink.Split('/').ElementAt(3);
 
             // set the ClientEncryptionPolicy for the Settings.
-            ClientEncryptionPolicy clientEncryptionPolicy = containerResponse.Resource.ClientEncryptionPolicy;
+            ClientEncryptionPolicy clientEncryptionPolicy = containerProperties.ClientEncryptionPolicy;
 
             EncryptionSettings encryptionSettings = new EncryptionSettings(containerRidValue);
 
@@ -95,10 +91,9 @@ namespace Microsoft.Azure.Cosmos.Encryption
                 // for each of the unique keys in the policy Add it in /Update the cache.
                 foreach (string clientEncryptionKeyId in clientEncryptionPolicy.IncludedPaths.Select(x => x.ClientEncryptionKeyId).Distinct())
                 {
-                    await encryptionContainer.EncryptionCosmosClient.GetClientEncryptionKeyPropertiesAsync(
-                         clientEncryptionKeyId: clientEncryptionKeyId,
-                         encryptionContainer: encryptionContainer,
+                    await encryptionKeyCache.GetClientEncryptionKeyPropertiesAsync(
                          databaseRid: databaseRidValue,
+                         clientEncryptionKeyId: clientEncryptionKeyId,
                          cancellationToken: cancellationToken);
                 }
 
@@ -110,7 +105,8 @@ namespace Microsoft.Azure.Cosmos.Encryption
                     EncryptionSettingForProperty encryptionSettingsForProperty = new EncryptionSettingForProperty(
                         propertyToEncrypt.ClientEncryptionKeyId,
                         encryptionType,
-                        encryptionContainer,
+                        encryptionKeyCache,
+                        encryptionKeyStoreProvider,
                         databaseRidValue);
 
                     string propertyName = propertyToEncrypt.Path.Substring(1);

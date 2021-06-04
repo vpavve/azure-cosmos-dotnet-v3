@@ -4,6 +4,7 @@
 
 namespace Microsoft.Azure.Cosmos
 {
+    using System.Collections.Generic;
     using System.IO;
     using System.Threading;
     using System.Threading.Tasks;
@@ -42,7 +43,7 @@ namespace Microsoft.Azure.Cosmos
         /// <summary>
         /// CosmosEncodingContext
         /// </summary>
-        public abstract class CosmosEncodingContext
+        public class CosmosEncodingContext
         {
             /// <summary>
             /// SubPath
@@ -52,9 +53,7 @@ namespace Microsoft.Azure.Cosmos
             /// <summary>
             /// Add specific encoding/decoding headers context that needs to be relayed to service
             /// </summary>
-            /// <param name="name"></param>
-            /// <param name="value"></param>
-            public abstract void UpsertCustomHeader(string name, string value);
+            public Dictionary<string, string> CustomHeaders { get; set; }
         }
     }
 }

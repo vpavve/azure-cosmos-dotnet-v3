@@ -61,7 +61,7 @@ namespace Microsoft.Azure.Cosmos.Encryption
                 throw new ArgumentNullException(nameof(encryptionKeyWrapMetadata));
             }
 
-            EncryptionCosmosClient encryptionCosmosClient;
+            CosmosEncryptionKeyCache encryptionCosmosClient;
 
             if (database is EncryptionDatabase encryptionDatabase)
             {
@@ -148,7 +148,7 @@ namespace Microsoft.Azure.Cosmos.Encryption
 
             ClientEncryptionKey clientEncryptionKey = database.GetClientEncryptionKey(clientEncryptionKeyId);
 
-            EncryptionCosmosClient encryptionCosmosClient;
+            CosmosEncryptionKeyCache encryptionCosmosClient;
 
             if (database is EncryptionDatabase encryptionDatabase)
             {

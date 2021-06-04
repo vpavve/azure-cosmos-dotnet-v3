@@ -44,7 +44,7 @@ namespace Microsoft.Azure.Cosmos.Encryption
                 ProtectedDataEncryptionKey.TimeToLive = TimeSpan.FromDays(36500);
             }
 
-            return new EncryptionCosmosClient(cosmosClient, encryptionKeyStoreProvider);
+            return new CosmosEncryptionKeyCache(cosmosClient, encryptionKeyStoreProvider);
         }
     }
 }

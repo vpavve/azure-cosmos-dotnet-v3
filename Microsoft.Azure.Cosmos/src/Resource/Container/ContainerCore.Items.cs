@@ -35,6 +35,7 @@ namespace Microsoft.Azure.Cosmos
     using Microsoft.Azure.Cosmos.Tracing;
     using Microsoft.Azure.Documents;
     using Microsoft.Azure.Documents.Routing;
+    using static Microsoft.Azure.Cosmos.CosmosStreamEncoder;
 
     /// <summary>
     /// Used to perform operations on items. There are two different types of operations.
@@ -58,7 +59,7 @@ namespace Microsoft.Azure.Cosmos
             ItemRequestOptions requestOptions = null,
             CancellationToken cancellationToken = default)
         {
-            return await this.ProcessItemStreamAsync(
+            return await this.ProcessItemStreamWithEncodingAsync(
                 partitionKey: partitionKey,
                 itemId: null,
                 streamPayload: streamPayload,
@@ -99,7 +100,7 @@ namespace Microsoft.Azure.Cosmos
             ItemRequestOptions requestOptions = null,
             CancellationToken cancellationToken = default)
         {
-            return await this.ProcessItemStreamAsync(
+            return await this.ProcessItemStreamWithEncodingAsync(
                 partitionKey: partitionKey,
                 itemId: id,
                 streamPayload: null,
@@ -116,7 +117,7 @@ namespace Microsoft.Azure.Cosmos
             ItemRequestOptions requestOptions = null,
             CancellationToken cancellationToken = default)
         {
-            ResponseMessage response = await this.ProcessItemStreamAsync(
+            ResponseMessage response = await this.ProcessItemStreamWithEncodingAsync(
                 partitionKey: partitionKey,
                 itemId: id,
                 streamPayload: null,
@@ -135,7 +136,7 @@ namespace Microsoft.Azure.Cosmos
             ItemRequestOptions requestOptions = null,
             CancellationToken cancellationToken = default)
         {
-            return await this.ProcessItemStreamAsync(
+            return await this.ProcessItemStreamWithEncodingAsync(
                 partitionKey: partitionKey,
                 itemId: null,
                 streamPayload: streamPayload,
@@ -177,7 +178,7 @@ namespace Microsoft.Azure.Cosmos
             ItemRequestOptions requestOptions = null,
             CancellationToken cancellationToken = default)
         {
-            return await this.ProcessItemStreamAsync(
+            return await this.ProcessItemStreamWithEncodingAsync(
                 partitionKey: partitionKey,
                 itemId: id,
                 streamPayload: streamPayload,
@@ -224,7 +225,7 @@ namespace Microsoft.Azure.Cosmos
             ItemRequestOptions requestOptions = null,
             CancellationToken cancellationToken = default)
         {
-            return await this.ProcessItemStreamAsync(
+            return await this.ProcessItemStreamWithEncodingAsync(
                 partitionKey: partitionKey,
                 itemId: id,
                 streamPayload: null,
@@ -241,7 +242,7 @@ namespace Microsoft.Azure.Cosmos
             ItemRequestOptions requestOptions = null,
             CancellationToken cancellationToken = default)
         {
-            ResponseMessage response = await this.ProcessItemStreamAsync(
+            ResponseMessage response = await this.ProcessItemStreamWithEncodingAsync(
                 partitionKey: partitionKey,
                 itemId: id,
                 streamPayload: null,
@@ -953,30 +954,7 @@ namespace Microsoft.Azure.Cosmos
                     isPartitionKeyExtracted = true;
                 }
 
-                // Use one single ContainerProperties consistently for each execution
-                // Reload might cause in-consistencies
-                ContainerProperties cachedContainerProperties = null;
-                if (this.ClientContext.ClientOptions.StreamEncoder != null)
-                {
-                    // TODO: Do trace handle multiple StartChild on retry
-                    using (trace.StartChild("ItemEncoder"))
-                    {
-                        // Client might be starting possible stale caches data 
-                        // Underlying retry policy will refresh
-                        cachedContainerProperties = await this.GetCachedContainerPropertiesAsync(
-                            forceRefresh: false,
-                            trace: NoOpTrace.Singleton,
-                            cancellationToken: cancellationToken);
-
-                        itemStream = await this.ClientContext.ClientOptions.StreamEncoder.EncodeAsync(
-                                itemStream, 
-                                cachedContainerProperties, 
-                                null, 
-                                cancellationToken);
-                    }
-                }
-
-                ResponseMessage responseMessage = await this.ProcessItemStreamAsync(
+                ResponseMessage responseMessage = await this.ProcessItemStreamWithEncodingAsync(
                             partitionKey,
                             itemId,
                             itemStream,
@@ -986,65 +964,175 @@ namespace Microsoft.Azure.Cosmos
                             cancellationToken: cancellationToken);
 
                 // Optimization: fallbck retry policies are ONLY applicable for BadReqeust
-                if (responseMessage.StatusCode == HttpStatusCode.BadRequest)
+                if (isPartitionKeyExtracted && 
+                    responseMessage.StatusCode == HttpStatusCode.BadRequest)
                 {
                     if (requestRetryPolicy == null)
                     {
-                        if (this.ClientContext.ClientOptions.StreamEncoder != null)
-                        {
-                            Debug.Assert(cachedContainerProperties != null);
-
-                            requestRetryPolicy = new EncryptionMisMatchRetryPolicy(
-                                await this.ClientContext.DocumentClient.GetCollectionCacheAsync(trace),
-                                cachedContainerProperties,
-                                requestRetryPolicy);
-                        }
-
-                        if (isPartitionKeyExtracted)
-                        {
-                            requestRetryPolicy = new PartitionKeyMismatchRetryPolicy(
-                                await this.ClientContext.DocumentClient.GetCollectionCacheAsync(trace),
-                                requestRetryPolicy);
-                        }
+                        requestRetryPolicy = new PartitionKeyMismatchRetryPolicy(
+                            await this.ClientContext.DocumentClient.GetCollectionCacheAsync(trace),
+                            requestRetryPolicy);
                     }
 
                     ShouldRetryResult retryResult = await requestRetryPolicy.ShouldRetryAsync(responseMessage, cancellationToken);
                     if (retryResult.ShouldRetry)
                     {
-                        if (this.ClientContext.ClientOptions.StreamEncoder != null)
-                        {
-                            // Decode input/reqeust for retry
-                            using (trace.StartChild("ItemDecoder"))
-                            {
-                                itemStream.Position = 0;
-                                itemStream = await this.ClientContext.ClientOptions.StreamEncoder.DecodeAsync(
-                                        itemStream,
-                                        cachedContainerProperties,
-                                        null,
-                                        cancellationToken);
-                            }
-                        }
-
                         continue;
                     }
                 }
 
+                return responseMessage; 
+            }
+        }
+        private Task<ResponseMessage> ProcessItemStreamWithEncodingAsync(
+            PartitionKey? partitionKey,
+            string itemId,
+            Stream streamPayload,
+            OperationType operationType,
+            ItemRequestOptions requestOptions,
+            ITrace trace,
+            CancellationToken cancellationToken)
+        {
+            return this.ProcessItemStreamWithEncodingInternalAsync(
+                        partitionKey,
+                        itemId,
+                        streamPayload,
+                        operationType,
+                        requestOptions,
+                        trace,
+                        true,
+                        cancellationToken);
+        }
+
+        private async Task<ResponseMessage> ProcessItemStreamWithEncodingInternalAsync(
+            PartitionKey? partitionKey,
+            string itemId,
+            Stream streamPayload,
+            OperationType operationType,
+            ItemRequestOptions requestOptions,
+            ITrace trace,
+            bool attemptRetryOnIncorrectContainerRidSubStatus,
+            CancellationToken cancellationToken)
+        {
+            // TODO:
+            // 1. Do trace handle multiple StartChild on retry
+
+            // Use one single ContainerProperties consistently for each execution
+            // Reload might cause in-consistencies
+            ContainerProperties cachedContainerProperties = null;
+            CosmosEncodingContext encodingContext = null;
+            if (this.ClientContext.ClientOptions.StreamEncoder != null)
+            {
+                using (trace.StartChild("ItemEncoder"))
+                {
+                    // Client might be starting possible stale caches data 
+                    // ASSUMPTION: Underlying retry policy will refresh
+                    cachedContainerProperties = await this.GetCachedContainerPropertiesAsync(
+                        forceRefresh: false,
+                        trace: NoOpTrace.Singleton,
+                        cancellationToken: cancellationToken);
+
+                    encodingContext = new CosmosEncodingContext();
+                    streamPayload = await this.ClientContext.ClientOptions.StreamEncoder.EncodeAsync(
+                            streamPayload,
+                            cachedContainerProperties,
+                            encodingContext,
+                            cancellationToken);
+                }
+            }
+
+            ResponseMessage responseMessage = await this.ProcessItemStreamAsync(
+                        partitionKey,
+                        itemId,
+                        streamPayload,
+                        operationType,
+                        requestOptions,
+                        trace: trace,
+                        requestEnricher: (requestMessage) => 
+                                {
+                                    if (encodingContext?.CustomHeaders != null) 
+                                    {
+                                        foreach (KeyValuePair<string, string> entry in encodingContext?.CustomHeaders)
+                                        {
+                                            requestMessage.Headers.Add(entry.Key, entry.Value);
+                                        }
+                                    }
+                                },
+                        cancellationToken: cancellationToken);
+
+            // TODO: Any non-success cases that needs attention
+            if (responseMessage.IsSuccessStatusCode &&
+                this.ClientContext.ClientOptions.StreamEncoder != null)
+            {
+                // Decode input/reqeust for retry
+                using (trace.StartChild("ItemDecoder"))
+                {
+                    // Now the streamPayload itself is not disposed off(and hence safe to use it in the below call) since the stream that is passed to CreateItemStreamAsync is a MemoryStream and not the original Stream
+                    // that the user has passed. The call to EncryptAsync reads out the stream(and processes it) and returns a MemoryStream which is eventually cloned in the
+                    // Cosmos SDK and then used. This stream however is to be disposed off as part of ResponseMessage when this gets returned.
+
+                    CosmosEncodingContext decodingContext = new CosmosEncodingContext();
+                    responseMessage.Content = await this.ClientContext.ClientOptions.StreamEncoder.DecodeAsync(
+                            responseMessage.Content,
+                            cachedContainerProperties,
+                            decodingContext,
+                            cancellationToken);
+
+                    if (decodingContext?.CustomHeaders != null)
+                    {
+                        foreach (KeyValuePair<string, string> entry in decodingContext?.CustomHeaders)
+                        {
+                            responseMessage.Headers.Add(entry.Key, entry.Value);
+                        }
+                    }
+                }
+            }
+
+            // Optimization: fallbck retry policies are ONLY applicable for BadReqeust
+            // TODO: 1024 == Constants.IncorrectContainerRidSubStatus (Test validate)
+            if (responseMessage.StatusCode == HttpStatusCode.BadRequest
+                && responseMessage.Headers.SubStatusCode == (SubStatusCodes)1024) 
+            {
+                // TODO: Force refres collection by removing the entries from both named and id based caches
+                // this.clientCollectionCache.Refresh(resourceIdOrFullName, HttpConstants.Versions.CurrentVersion);
+
                 if (this.ClientContext.ClientOptions.StreamEncoder != null)
                 {
-                    // Decode response
+                    // Decode input/reqeust for retry
                     using (trace.StartChild("ItemDecoder"))
                     {
-                        Stream encodedContentStream = responseMessage.Content;
-                        responseMessage.Content = await this.ClientContext.ClientOptions.StreamEncoder.DecodeAsync(
-                                encodedContentStream,
+                        // Even though the streamPayload position is expected to be 0,
+                        // because for MemoryStream we just use the underlying buffer to send over the wire rather than using the Stream APIs
+                        // resetting it 0 to be on a safer side.
+                        streamPayload.Position = 0;
+
+                        // Now the streamPayload itself is not disposed off(and hence safe to use it in the below call) since the stream that is passed to CreateItemStreamAsync is a MemoryStream and not the original Stream
+                        // that the user has passed. The call to EncryptAsync reads out the stream(and processes it) and returns a MemoryStream which is eventually cloned in the
+                        // Cosmos SDK and then used. This stream however is to be disposed off as part of ResponseMessage when this gets returned.
+                        streamPayload = await this.ClientContext.ClientOptions.StreamEncoder.DecodeAsync(
+                                streamPayload,
                                 cachedContainerProperties,
                                 null,
                                 cancellationToken);
                     }
                 }
 
-                return responseMessage; 
+                if (attemptRetryOnIncorrectContainerRidSubStatus)
+                {
+                    // retry only once 
+                    responseMessage = await this.ProcessItemStreamWithEncodingInternalAsync(
+                                            partitionKey,
+                                            itemId,
+                                            streamPayload,
+                                            operationType,
+                                            requestOptions,
+                                            trace,
+                                            false,
+                                            cancellationToken);
+                }
             }
+
+            return responseMessage;
         }
 
         private async Task<ResponseMessage> ProcessItemStreamAsync(
@@ -1054,6 +1142,7 @@ namespace Microsoft.Azure.Cosmos
             OperationType operationType,
             ItemRequestOptions requestOptions,
             ITrace trace,
+            Action<RequestMessage> requestEnricher,
             CancellationToken cancellationToken)
         {
             if (trace == null)
@@ -1078,7 +1167,7 @@ namespace Microsoft.Azure.Cosmos
                 partitionKey: partitionKey,
                 itemId: itemId,
                 streamPayload: streamPayload,
-                requestEnricher: null,
+                requestEnricher: requestEnricher,
                 trace: trace,
                 cancellationToken: cancellationToken);
 

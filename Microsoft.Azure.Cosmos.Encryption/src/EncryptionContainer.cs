@@ -25,7 +25,7 @@ namespace Microsoft.Azure.Cosmos.Encryption
 
         public CosmosResponseFactory ResponseFactory { get; }
 
-        public EncryptionCosmosClient EncryptionCosmosClient { get; }
+        public CosmosEncryptionKeyCache EncryptionCosmosClient { get; }
 
         /// <summary>
         /// All the operations / requests for exercising client-side encryption functionality need to be made using this EncryptionContainer instance.
@@ -34,7 +34,7 @@ namespace Microsoft.Azure.Cosmos.Encryption
         /// <param name="encryptionCosmosClient"> Cosmos Client configured with Encryption.</param>
         public EncryptionContainer(
             Container container,
-            EncryptionCosmosClient encryptionCosmosClient)
+            CosmosEncryptionKeyCache encryptionCosmosClient)
         {
             this.container = container ?? throw new ArgumentNullException(nameof(container));
             this.EncryptionCosmosClient = encryptionCosmosClient ?? throw new ArgumentNullException(nameof(container));
@@ -51,89 +51,6 @@ namespace Microsoft.Azure.Cosmos.Encryption
 
         public override Database Database => this.container.Database;
 
-        public override async Task<ItemResponse<T>> CreateItemAsync<T>(
-            T item,
-            PartitionKey? partitionKey = null,
-            ItemRequestOptions requestOptions = null,
-            CancellationToken cancellationToken = default)
-        {
-            if (item == null)
-            {
-                throw new ArgumentNullException(nameof(item));
-            }
-
-            if (partitionKey == null)
-            {
-                throw new NotSupportedException($"{nameof(partitionKey)} cannot be null for operations using {nameof(EncryptionContainer)}.");
-            }
-
-            CosmosDiagnosticsContext diagnosticsContext = CosmosDiagnosticsContext.Create(requestOptions);
-            using (diagnosticsContext.CreateScope("CreateItem"))
-            {
-                ResponseMessage responseMessage;
-
-                using (Stream itemStream = this.CosmosSerializer.ToStream<T>(item))
-                {
-                    responseMessage = await this.CreateItemHelperAsync(
-                        itemStream,
-                        partitionKey.Value,
-                        requestOptions,
-                        diagnosticsContext,
-                        cancellationToken);
-                }
-
-                return this.ResponseFactory.CreateItemResponse<T>(responseMessage);
-            }
-        }
-
-        public override async Task<ResponseMessage> CreateItemStreamAsync(
-            Stream streamPayload,
-            PartitionKey partitionKey,
-            ItemRequestOptions requestOptions = null,
-            CancellationToken cancellationToken = default)
-        {
-            if (streamPayload == null)
-            {
-                throw new ArgumentNullException(nameof(streamPayload));
-            }
-
-            CosmosDiagnosticsContext diagnosticsContext = CosmosDiagnosticsContext.Create(requestOptions);
-            using (diagnosticsContext.CreateScope("CreateItemStream"))
-            {
-                return await this.CreateItemHelperAsync(
-                    streamPayload,
-                    partitionKey,
-                    requestOptions,
-                    diagnosticsContext,
-                    cancellationToken);
-            }
-        }
-
-        public override Task<ItemResponse<T>> DeleteItemAsync<T>(
-            string id,
-            PartitionKey partitionKey,
-            ItemRequestOptions requestOptions = null,
-            CancellationToken cancellationToken = default)
-        {
-            return this.container.DeleteItemAsync<T>(
-                id,
-                partitionKey,
-                requestOptions,
-                cancellationToken);
-        }
-
-        public override Task<ResponseMessage> DeleteItemStreamAsync(
-            string id,
-            PartitionKey partitionKey,
-            ItemRequestOptions requestOptions = null,
-            CancellationToken cancellationToken = default)
-        {
-            return this.container.DeleteItemStreamAsync(
-                id,
-                partitionKey,
-                requestOptions,
-                cancellationToken);
-        }
 
         public override async Task<ItemResponse<T>> ReadItemAsync<T>(
             string id,
@@ -868,15 +785,17 @@ namespace Microsoft.Azure.Cosmos.Encryption
             throw new NotImplementedException();
         }
 
-        public async Task<EncryptionSettings> GetOrUpdateEncryptionSettingsFromCacheAsync(
+        public Task<EncryptionSettings> GetOrUpdateEncryptionSettingsFromCacheAsync(
             EncryptionSettings obsoleteEncryptionSettings,
             CancellationToken cancellationToken)
         {
-            return await this.encryptionSettingsByContainerName.GetAsync(
-                this.Id,
-                obsoleteValue: obsoleteEncryptionSettings,
-                singleValueInitFunc: () => EncryptionSettings.CreateAsync(this, cancellationToken),
-                cancellationToken: cancellationToken);
+            // return await this.encryptionSettingsByContainerName.GetAsync(
+            //    this.Id,
+            //    obsoleteValue: obsoleteEncryptionSettings,
+            //    singleValueInitFunc: () => EncryptionSettings.CreateAsync(this, cancellationToken),
+            //    cancellationToken: cancellationToken);
+
+            throw new NotImplementedException();
         }
 
         /// <summary>
