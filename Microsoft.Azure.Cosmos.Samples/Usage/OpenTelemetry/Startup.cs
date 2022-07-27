@@ -1,23 +1,21 @@
 namespace AspNetCoreWebApp
 {
     using System;
-    using System.Collections.Generic;
-    using System.Linq;
     using System.Threading.Tasks;
-
-    using Microsoft.ApplicationInsights.AspNetCore.Extensions;
-    using Microsoft.ApplicationInsights.Channel;
-    using Microsoft.ApplicationInsights.DataContracts;
-    using Microsoft.ApplicationInsights.Extensibility;
     using Microsoft.AspNetCore.Builder;
     using Microsoft.AspNetCore.Hosting;
-    using Microsoft.AspNetCore.HttpsPolicy;
+    using Microsoft.Azure.Cosmos;
+    using Microsoft.Azure.Cosmos.Fluent;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.DependencyInjection;
     using Microsoft.Extensions.Hosting;
+    using OpenTelemetry.Models;
 
     public class Startup
     {
+        private CosmosClient cosmosClient;
+        private Database database;
+
         public Startup(IConfiguration configuration)
         {
             this.Configuration = configuration;
@@ -28,11 +26,55 @@ namespace AspNetCoreWebApp
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
+            services.AddAuthorization();
+
             services.AddControllersWithViews();
             // Add and initialize the Application Insights SDK.
             services.AddApplicationInsightsTelemetry();
+
+            CosmosDbSettings cosmosDbSettings = this.Configuration.GetSection("CosmosDb").Get<CosmosDbSettings>();
+
+            Container container = this.CreateClientAndContainer(
+                connectionString: cosmosDbSettings.ConnectionString,
+                mode: Enum.Parse<ConnectionMode>(cosmosDbSettings.ConnectionMode),
+                isEnableOpenTelemetry: cosmosDbSettings.EnableOpenTelemetry).Result;
+
+            services.AddSingleton<Container>(container);
         }
 
+        private async Task<Container> CreateClientAndContainer(
+            string connectionString,
+            ConnectionMode mode,
+            Microsoft.Azure.Cosmos.ConsistencyLevel? consistency = null,
+            bool isLargeContainer = false,
+            bool isEnableOpenTelemetry = false)
+        {
+            CosmosClientBuilder cosmosClientBuilder = new CosmosClientBuilder(connectionString);
+            if (consistency.HasValue)
+            {
+                cosmosClientBuilder = cosmosClientBuilder.WithConsistencyLevel(consistency.Value);
+            }
+
+            if (isEnableOpenTelemetry)
+            {
+                cosmosClientBuilder = cosmosClientBuilder.EnableOpenTelemetry();
+            }
+ 
+            this.cosmosClient = mode == ConnectionMode.Gateway
+                ? cosmosClientBuilder.WithConnectionModeGateway().Build()
+                : cosmosClientBuilder.Build();
+
+            Random randomNumber = new Random();
+            string randomNumberString = randomNumber.Next(0, 9999).ToString("0000");
+
+            this.database = await this.cosmosClient.CreateDatabaseAsync("OTelSampleDb" + randomNumberString);
+
+            return await this.database.CreateContainerAsync(
+                id: "OTelSampleContainer" + randomNumberString,
+                partitionKeyPath: "/id",
+                throughput: isLargeContainer ? 15000 : 400);
+        }
+        
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
@@ -46,13 +88,11 @@ namespace AspNetCoreWebApp
                 // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
                 app.UseHsts();
             }
+            
             app.UseHttpsRedirection();
             app.UseStaticFiles();
-
             app.UseRouting();
-
             app.UseAuthorization();
-
             app.UseEndpoints(endpoints =>
             {
                 if (endpoints == null)

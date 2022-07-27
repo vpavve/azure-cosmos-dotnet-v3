@@ -335,6 +335,8 @@ namespace Microsoft.Azure.Cosmos.Telemetry
                         request.Headers.Add(HttpConstants.HttpHeaders.EnvironmentName, envName);
                     }
 
+                    request.Headers.Add("x-ms-correlation-id", "DotNetSDK-" + Guid.NewGuid().ToString());
+
                     return request;
                 }
 
