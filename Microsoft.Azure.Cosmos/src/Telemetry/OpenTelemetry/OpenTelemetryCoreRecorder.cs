@@ -83,7 +83,10 @@ namespace Microsoft.Azure.Cosmos.Telemetry.Diagnostics
                     latency: response.Diagnostics.GetClientElapsedTime(),
                     statuscode: response.StatusCode))
             {
-                this.scope.AddAttribute(OpenTelemetryAttributeKeys.RequestDiagnostics, response.Diagnostics);
+                if (CosmosDbEventSource.IsWarnEnabled)
+                {
+                    CosmosDbEventSource.Singleton.RecordRequestDiagnostics(response.Diagnostics.ToString());
+                }
             }
 
         }

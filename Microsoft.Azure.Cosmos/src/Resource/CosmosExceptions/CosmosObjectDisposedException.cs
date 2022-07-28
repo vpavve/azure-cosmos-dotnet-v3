@@ -98,7 +98,10 @@ namespace Microsoft.Azure.Cosmos
         internal static void RecordOtelAttributes(CosmosObjectDisposedException exception, DiagnosticScope scope)
         {
             scope.AddAttribute(OpenTelemetryAttributeKeys.Region, ClientTelemetryHelper.GetContactedRegions(exception.Diagnostics));
-            scope.AddAttribute(OpenTelemetryAttributeKeys.RequestDiagnostics, exception.Diagnostics);
+            if (CosmosDbEventSource.IsWarnEnabled)
+            {
+                CosmosDbEventSource.Singleton.RecordRequestDiagnostics(exception.Diagnostics.ToString());
+            }
             scope.AddAttribute(OpenTelemetryAttributeKeys.ExceptionMessage, exception.Message);
         }
     }
