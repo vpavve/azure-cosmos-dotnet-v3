@@ -1,0 +1,11 @@
+﻿@{
+    ViewData["Title"] = "Home Page";
+}
+
+<div class="text-center">
+    <h1 class="display-4">Welcome to Open Telemetry Demo</h1>
+    @using(Html.BeginForm("Index", "PointOperation", FormMethod.Post))
+    {
+        <button type="submit">Fire Point Operations</button>
+    }
+</div>
