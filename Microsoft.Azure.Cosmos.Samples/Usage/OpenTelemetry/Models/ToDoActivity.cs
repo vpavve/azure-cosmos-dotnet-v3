@@ -2,11 +2,12 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //------------------------------------------------------------
 
-namespace Microsoft.Azure.Cosmos.SDK.EmulatorTests
+namespace OpenTelemetry.Models
 {
     using System;
     using System.Collections.Generic;
     using System.Threading.Tasks;
+    using Microsoft.Azure.Cosmos;
 
     public class ToDoActivity
     {

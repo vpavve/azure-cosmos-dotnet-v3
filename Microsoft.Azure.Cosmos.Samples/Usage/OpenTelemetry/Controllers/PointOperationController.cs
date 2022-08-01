@@ -4,8 +4,8 @@
     using System.Threading.Tasks;
     using Microsoft.AspNetCore.Mvc;
     using Microsoft.Azure.Cosmos;
-    using Microsoft.Azure.Cosmos.SDK.EmulatorTests;
     using Microsoft.Extensions.Logging;
+    using Models;
     using WebApp.AspNetCore.Controllers;
     using WebApp.AspNetCore.Models;
 
@@ -13,6 +13,7 @@
     {
         private readonly ILogger<HomeController> logger;
         private readonly Container container;
+        private readonly SuccessViewModel successModel = new SuccessViewModel();
 
         public PointOperationController(ILogger<HomeController> logger, Container container)
         {
@@ -43,7 +44,9 @@
 
             });
 
-            return this.View();
+            this.successModel.PointOpsMessage = "Point Operation Triggered Successfully";
+
+            return this.View(this.successModel);
         }
 
 

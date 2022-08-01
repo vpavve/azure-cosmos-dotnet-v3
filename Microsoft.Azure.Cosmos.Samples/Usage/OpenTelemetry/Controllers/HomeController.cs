@@ -5,7 +5,6 @@
     using Microsoft.AspNetCore.Mvc;
     using Microsoft.Azure.Cosmos;
     using Microsoft.Azure.Cosmos.Fluent;
-    using Microsoft.Azure.Cosmos.SDK.EmulatorTests;
     using Microsoft.Extensions.Logging;
     using Microsoft.Extensions.Options;
     using OpenTelemetry.Models;
