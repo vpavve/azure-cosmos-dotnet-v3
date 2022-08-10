@@ -29,6 +29,8 @@ namespace Microsoft.Azure.Cosmos.Tests.Query.Pipeline
 
         private const int DocumentCount = 500;
 
+        private const int PageSize = 10;
+
         private static readonly TimeSpan PollingInterval = TimeSpan.FromMilliseconds(25);
 
         private static readonly IReadOnlyList<CosmosObject> Documents = Enumerable
@@ -61,7 +63,12 @@ namespace Microsoft.Azure.Cosmos.Tests.Query.Pipeline
                     query: "SELECT VALUE SUM(1) FROM c",
                     continuationCount: 3,
                     partitionCount: 3,
-                    expectedDocument: CosmosNumber64.Create(DocumentCount))
+                    expectedDocument: CosmosNumber64.Create(DocumentCount)),
+                MakeTest(
+                    query: "SELECT VALUE COUNT(1) FROM (SELECT DISTINCT VALUE c.pk FROM c)",
+                    continuationCount: 3,
+                    partitionCount: 3,
+                    expectedDocument: CosmosNumber64.Create(80)) // (2^3 feed ranges) * (10 documents per page)
             };
 
             foreach(AggressivePrefetchTestCase testCase in testCases)
@@ -125,7 +132,7 @@ namespace Microsoft.Azure.Cosmos.Tests.Query.Pipeline
             Task<List<CosmosElement>> resultTask = FullPipelineTests.DrainWithoutStateAsync(
                 testCase.Query,
                 documentContainer,
-                pageSize: 10);
+                pageSize: PageSize);
 
             for (int i = 0; i < testCase.ContinuationCount; i++)
             {
