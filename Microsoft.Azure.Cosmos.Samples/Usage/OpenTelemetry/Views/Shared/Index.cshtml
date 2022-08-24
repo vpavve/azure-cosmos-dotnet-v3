@@ -12,5 +12,12 @@
     @using(Html.BeginForm("Index", "PointOperation", FormMethod.Post))
     {
         <button type="submit">Fire Point Operations</button> <span color = "blue">@Model?.PointOpsMessage</span>
+       
     }
+    @using (Html.BeginForm("Index", "QueryOperation", FormMethod.Post))
+    {
+        <button type="submit">Fire Query Operations</button> <span color="blue">@Model?.QueryOpsMessage</span>
+
+    }
+
 </div>
