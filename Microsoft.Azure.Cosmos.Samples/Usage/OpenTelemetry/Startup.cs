@@ -46,7 +46,7 @@ namespace AspNetCoreWebApp
             string connectionString,
             ConnectionMode mode,
             Microsoft.Azure.Cosmos.ConsistencyLevel? consistency = null,
-            bool isLargeContainer = false,
+            bool isLargeContainer = true,
             bool isEnableOpenTelemetry = false)
         {
             CosmosClientBuilder cosmosClientBuilder = new CosmosClientBuilder(connectionString);

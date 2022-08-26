@@ -25,11 +25,41 @@
 
         public IActionResult Index()
         {
-            Task.Run(async () => await this.SinglePartitionQuery());
+            Task.Run(async () =>
+            {
+                //await this.SinglePartitionQuery();
+                await this.CrossPartitionQuery();
+            });
 
             this.successModel.QueryOpsMessage = "Query Operation Triggered Successfully";
 
             return this.View(this.successModel);
+        }
+
+        private async Task CrossPartitionQuery()
+        {
+            await ToDoActivity.CreateRandomItems(
+               container: this.container,
+               pkCount: 2,
+               perPKItemCount: 5);
+
+            string sqlQueryText = "SELECT * FROM c";
+
+            List<object> families = new List<object>();
+
+            QueryDefinition queryDefinition = new QueryDefinition(sqlQueryText);
+            using (FeedIterator<object> queryResultSetIterator = this.container.GetItemQueryIterator<object>(queryDefinition))
+            {
+                while (queryResultSetIterator.HasMoreResults)
+                {
+                    FeedResponse<object> currentResultSet = await queryResultSetIterator.ReadNextAsync();
+                    foreach (object family in currentResultSet)
+                    {
+                        families.Add(family);
+                    }
+                }
+            }
+
         }
 
         private async Task SinglePartitionQuery()

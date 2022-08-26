@@ -4,5 +4,6 @@
     {
         public string PointOpsMessage { get; set; } = "Not Triggered Yet";
         public string QueryOpsMessage { get; set; } = "Not Triggered Yet";
+        public string StreamOpsMessage { get; set; } = "Not Triggered Yet";
     }
 }

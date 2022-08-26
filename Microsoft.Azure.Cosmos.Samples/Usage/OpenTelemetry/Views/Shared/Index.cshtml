@@ -19,5 +19,10 @@
         <button type="submit">Fire Query Operations</button> <span color="blue">@Model?.QueryOpsMessage</span>
 
     }
+     @using (Html.BeginForm("Index", "QueryOperation", FormMethod.Post))
+    {
+        <button type="submit">Fire Stream Operations</button> <span color="blue">@Model?.StreamOpsMessage</span>
+
+    }
 
 </div>
